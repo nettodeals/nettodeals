@@ -7,7 +7,6 @@ import sqlite3
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from jinja2 import Template
 
 
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
