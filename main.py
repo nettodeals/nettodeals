@@ -1,15 +1,17 @@
 # main.py
-import os
-import re
-import sqlite3
+
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from urllib.parse import urljoin
+from html import escape
+import hashlib
+import os
+import sqlite3
+from typing import Any, Optional
 
 import requests
 import uvicorn
-from bs4 import BeautifulSoup
-from fastapi import FastAPI, Form, HTTPException
+
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from jinja2 import Template
 
@@ -19,18 +21,58 @@ from jinja2 import Template
 # ============================================================
 
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
-DB_PATH = os.getenv("DB_PATH", "/data/nettodeals.db")
 
-TOPPREISE_URL = "https://www.toppreise.ch/topprodukte"
+DB_PATH = os.getenv(
+    "DB_PATH",
+    "/data/nettodeals.db",
+)
 
-USER_AGENT = os.getenv(
-    "SCRAPER_USER_AGENT",
-    "NettoDeals.ch Deal Importer/1.0"
+# ------------------------------------------------------------
+# Admin
+# ------------------------------------------------------------
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+
+# ------------------------------------------------------------
+# AWIN
+# ------------------------------------------------------------
+
+AWIN_PUBLISHER_ID = os.getenv("AWIN_PUBLISHER_ID", "")
+AWIN_API_TOKEN = os.getenv("AWIN_API_TOKEN", "")
+
+AWIN_API_BASE = "https://api.awin.com"
+
+# ------------------------------------------------------------
+# TRADEDOUBLER
+# ------------------------------------------------------------
+
+TRADEDOUBLER_PRODUCTS_TOKEN = os.getenv(
+    "TRADEDOUBLER_PRODUCTS_TOKEN",
+    "",
+)
+
+TRADEDOUBLER_VOUCHERS_TOKEN = os.getenv(
+    "TRADEDOUBLER_VOUCHERS_TOKEN",
+    "",
+)
+
+TRADEDOUBLER_API_BASE = "https://api.tradedoubler.com/1.0"
+
+# ------------------------------------------------------------
+# IMPORT-EINSTELLUNGEN
+# ------------------------------------------------------------
+
+MAX_PRODUCTS_PER_FEED = int(
+    os.getenv("MAX_PRODUCTS_PER_FEED", "20")
+)
+
+HTTP_TIMEOUT = int(
+    os.getenv("HTTP_TIMEOUT", "30")
 )
 
 
 # ============================================================
-# APP
+# FASTAPI
 # ============================================================
 
 app = FastAPI(
@@ -43,84 +85,110 @@ app = FastAPI(
 # DATENBANK
 # ============================================================
 
-def ensure_db_directory():
+def ensure_db_directory() -> None:
     db_dir = os.path.dirname(DB_PATH)
 
     if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
+        os.makedirs(
+            db_dir,
+            exist_ok=True,
+        )
 
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(
+        DB_PATH,
+        timeout=30,
+    )
+
     conn.row_factory = sqlite3.Row
 
     try:
         yield conn
         conn.commit()
+
     finally:
         conn.close()
 
 
-def init_db():
+def init_db() -> None:
+
     ensure_db_directory()
 
     with get_db() as conn:
 
-        # Veröffentliche Deals
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS deals (
+
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
 
                 title TEXT NOT NULL,
-                category TEXT NOT NULL,
 
-                base_price REAL NOT NULL,
+                category TEXT NOT NULL DEFAULT 'Deals',
 
-                coupon_code TEXT DEFAULT '',
+                base_price REAL NOT NULL DEFAULT 0,
+
                 coupon_discount REAL NOT NULL DEFAULT 0,
 
                 payment_bonus REAL NOT NULL DEFAULT 0,
 
-                effective_price REAL NOT NULL,
+                effective_price REAL NOT NULL DEFAULT 0,
 
                 shop_name TEXT NOT NULL,
 
                 affiliate_link TEXT NOT NULL,
 
-                source_name TEXT DEFAULT 'manual',
-                source_url TEXT DEFAULT '',
+                coupon_code TEXT,
+
+                description TEXT,
+
+                source TEXT NOT NULL DEFAULT 'manual',
+
+                source_id TEXT,
+
+                status TEXT NOT NULL DEFAULT 'draft',
+
+                created_at TEXT NOT NULL,
+
+                updated_at TEXT NOT NULL,
+
+                UNIQUE(source, source_id)
+            )
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS import_logs (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                source TEXT NOT NULL,
+
+                status TEXT NOT NULL,
+
+                message TEXT,
+
+                imported_count INTEGER NOT NULL DEFAULT 0,
 
                 created_at TEXT NOT NULL
             )
             """
         )
 
-        # Importierte Kandidaten
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS deal_candidates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-                title TEXT NOT NULL,
-                base_price REAL NOT NULL DEFAULT 0,
-
-                category TEXT DEFAULT 'Topprodukte',
-
-                source_name TEXT NOT NULL,
-                source_url TEXT NOT NULL UNIQUE,
-
-                imported_at TEXT NOT NULL,
-
-                status TEXT NOT NULL DEFAULT 'pending'
-            )
+            CREATE INDEX IF NOT EXISTS idx_deals_status
+            ON deals(status)
             """
         )
 
 
 @app.on_event("startup")
 def startup_event():
+
     init_db()
 
 
@@ -128,1160 +196,1046 @@ def startup_event():
 # HILFSFUNKTIONEN
 # ============================================================
 
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+def now_iso() -> str:
+
+    return datetime.now(
+        timezone.utc
+    ).isoformat()
 
 
-def parse_swiss_price(text: str):
-    """
-    Wandelt z.B.
+def calculate_effective_price(
+    base_price: float,
+    coupon_discount: float = 0.0,
+    payment_bonus: float = 0.0,
+) -> float:
 
-    CHF 1'199.95
-    CHF 999.00
-
-    in float um.
-    """
-
-    if not text:
-        return None
-
-    match = re.search(
-        r"CHF\s*([\d'’.,]+)",
-        text,
-        re.IGNORECASE
+    return round(
+        max(
+            0.0,
+            base_price
+            - coupon_discount
+            - payment_bonus,
+        ),
+        2,
     )
 
-    if not match:
-        return None
 
-    value = match.group(1)
+def make_source_id(*values: Any) -> str:
 
-    value = value.replace("'", "")
-    value = value.replace("’", "")
-    value = value.replace(",", ".")
+    raw = "|".join(
+        str(value or "")
+        for value in values
+    )
+
+    return hashlib.sha256(
+        raw.encode("utf-8")
+    ).hexdigest()
+
+
+def safe_float(
+    value: Any,
+    default: float = 0.0,
+) -> float:
+
+    if value is None:
+        return default
 
     try:
+
+        if isinstance(value, str):
+
+            value = (
+                value
+                .replace("CHF", "")
+                .replace("€", "")
+                .replace(",", ".")
+                .strip()
+            )
+
         return float(value)
 
-    except ValueError:
-        return None
+    except (
+        ValueError,
+        TypeError,
+    ):
+
+        return default
 
 
-def clean_product_title(text: str):
-    """
-    Entfernt Preisangaben aus dem Linktext.
-    """
+def first_value(
+    data: dict,
+    keys: list[str],
+    default: Any = None,
+):
 
-    text = re.sub(
-        r"\s+ab\s+CHF\s+.*$",
-        "",
-        text,
-        flags=re.IGNORECASE
+    for key in keys:
+
+        if key in data:
+
+            value = data.get(key)
+
+            if value not in (
+                None,
+                "",
+            ):
+                return value
+
+    return default
+
+
+def verify_admin_token(
+    token: str,
+) -> None:
+
+    if not ADMIN_TOKEN:
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "ADMIN_TOKEN ist auf dem Server "
+                "nicht konfiguriert."
+            ),
+        )
+
+    if token != ADMIN_TOKEN:
+
+        raise HTTPException(
+            status_code=403,
+            detail="Ungültiger Admin-Token.",
+        )
+
+
+def log_import(
+    source: str,
+    status: str,
+    message: str,
+    imported_count: int = 0,
+) -> None:
+
+    with get_db() as conn:
+
+        conn.execute(
+            """
+            INSERT INTO import_logs (
+                source,
+                status,
+                message,
+                imported_count,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                source,
+                status,
+                message,
+                imported_count,
+                now_iso(),
+            ),
+        )
+
+
+# ============================================================
+# DEAL SPEICHERN / UPDATE
+# ============================================================
+
+def upsert_deal(
+    *,
+    title: str,
+    category: str,
+    base_price: float,
+    coupon_discount: float,
+    payment_bonus: float,
+    shop_name: str,
+    affiliate_link: str,
+    coupon_code: Optional[str] = None,
+    description: Optional[str] = None,
+    source: str = "manual",
+    source_id: Optional[str] = None,
+    status: str = "draft",
+) -> bool:
+
+    title = str(title or "").strip()
+    category = str(category or "Deals").strip()
+    shop_name = str(shop_name or "Unbekannter Shop").strip()
+    affiliate_link = str(
+        affiliate_link or ""
+    ).strip()
+
+    if not title:
+        return False
+
+    # Ohne gültigen Link nicht automatisch veröffentlichen
+    if not affiliate_link.startswith(
+        ("http://", "https://")
+    ):
+        status = "draft"
+
+    base_price = safe_float(base_price)
+
+    coupon_discount = safe_float(
+        coupon_discount
     )
 
-    return " ".join(text.split()).strip()
+    payment_bonus = safe_float(
+        payment_bonus
+    )
+
+    effective_price = calculate_effective_price(
+        base_price,
+        coupon_discount,
+        payment_bonus,
+    )
+
+    if not source_id:
+
+        source_id = make_source_id(
+            title,
+            shop_name,
+            affiliate_link,
+        )
+
+    timestamp = now_iso()
+
+    with get_db() as conn:
+
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM deals
+            WHERE source = ?
+            AND source_id = ?
+            """,
+            (
+                source,
+                source_id,
+            ),
+        ).fetchone()
+
+        if existing:
+
+            conn.execute(
+                """
+                UPDATE deals
+                SET
+
+                    title = ?,
+
+                    category = ?,
+
+                    base_price = ?,
+
+                    coupon_discount = ?,
+
+                    payment_bonus = ?,
+
+                    effective_price = ?,
+
+                    shop_name = ?,
+
+                    affiliate_link = ?,
+
+                    coupon_code = ?,
+
+                    description = ?,
+
+                    updated_at = ?
+
+                WHERE id = ?
+                """,
+                (
+                    title,
+                    category,
+                    base_price,
+                    coupon_discount,
+                    payment_bonus,
+                    effective_price,
+                    shop_name,
+                    affiliate_link,
+                    coupon_code,
+                    description,
+                    timestamp,
+                    existing["id"],
+                ),
+            )
+
+            return False
+
+        conn.execute(
+            """
+            INSERT INTO deals (
+
+                title,
+                category,
+                base_price,
+                coupon_discount,
+                payment_bonus,
+                effective_price,
+                shop_name,
+                affiliate_link,
+                coupon_code,
+                description,
+                source,
+                source_id,
+                status,
+                created_at,
+                updated_at
+
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                title,
+                category,
+                base_price,
+                coupon_discount,
+                payment_bonus,
+                effective_price,
+                shop_name,
+                affiliate_link,
+                coupon_code,
+                description,
+                source,
+                source_id,
+                status,
+                timestamp,
+                timestamp,
+            ),
+        )
+
+        return True
 
 
 # ============================================================
-# TOPPREISE IMPORT
+# AWIN
 # ============================================================
 
-def fetch_toppreise_products(limit=100):
+def awin_headers() -> dict:
 
-    headers = {
-        "User-Agent": USER_AGENT,
-        "Accept-Language": "de-CH,de;q=0.9,en;q=0.8",
+    if not AWIN_API_TOKEN:
+
+        raise RuntimeError(
+            "AWIN_API_TOKEN fehlt."
+        )
+
+    return {
+        "Authorization":
+            f"Bearer {AWIN_API_TOKEN}",
+        "Content-Type":
+            "application/json",
+        "Accept":
+            "application/json",
     }
 
-    response = requests.get(
-        TOPPREISE_URL,
-        headers=headers,
-        timeout=20,
+
+def import_awin_offers() -> int:
+
+    if not AWIN_PUBLISHER_ID:
+
+        raise RuntimeError(
+            "AWIN_PUBLISHER_ID fehlt."
+        )
+
+    if not AWIN_API_TOKEN:
+
+        raise RuntimeError(
+            "AWIN_API_TOKEN fehlt."
+        )
+
+    url = (
+        f"{AWIN_API_BASE}"
+        f"/publisher/{AWIN_PUBLISHER_ID}"
+        f"/promotions"
+    )
+
+    payload = {
+        "filters": {
+            "membership": "joined",
+            "status": "active",
+            "type": "all",
+        },
+        "pagination": {
+            "page": 1,
+            "pageSize": 200,
+        },
+    }
+
+    response = requests.post(
+        url,
+        headers=awin_headers(),
+        json=payload,
+        timeout=HTTP_TIMEOUT,
     )
 
     response.raise_for_status()
 
-    soup = BeautifulSoup(
-        response.text,
-        "html.parser"
-    )
+    data = response.json()
 
-    products = []
-    seen_urls = set()
+    # AWIN-Antwort kann je nach API-Version
+    # unterschiedlich verschachtelt sein
 
-    #
-    # Wir suchen Links, deren Text eine CHF-Preisangabe enthält.
-    #
-    # Die genaue HTML-Struktur einer externen Website kann sich
-    # ändern, deshalb ist dieser Import bewusst defensiv gebaut.
-    #
+    offers = []
 
-    for link in soup.find_all("a", href=True):
+    if isinstance(data, list):
 
-        text = " ".join(
-            link.get_text(" ", strip=True).split()
+        offers = data
+
+    elif isinstance(data, dict):
+
+        offers = (
+            data.get("offers")
+            or data.get("promotions")
+            or data.get("content")
+            or []
         )
-
-        href = link.get("href")
-
-        if not text:
-            continue
-
-        if "CHF" not in text:
-            continue
-
-        price = parse_swiss_price(text)
-
-        if price is None:
-            continue
-
-        title = clean_product_title(text)
-
-        if len(title) < 5:
-            continue
-
-        full_url = urljoin(
-            TOPPREISE_URL,
-            href
-        )
-
-        # Keine Duplikate
-        if full_url in seen_urls:
-            continue
-
-        seen_urls.add(full_url)
-
-        products.append(
-            {
-                "title": title,
-                "base_price": price,
-                "category": "Topprodukte",
-                "source_name": "Toppreise.ch",
-                "source_url": full_url,
-            }
-        )
-
-        if len(products) >= limit:
-            break
-
-    return products
-
-
-def import_toppreise(limit=100):
-
-    products = fetch_toppreise_products(limit)
 
     imported = 0
-    skipped = 0
 
-    with get_db() as conn:
+    for offer in offers:
+
+        if not isinstance(offer, dict):
+            continue
+
+        advertiser = offer.get(
+            "advertiser",
+            {}
+        )
+
+        if not isinstance(
+            advertiser,
+            dict,
+        ):
+            advertiser = {}
+
+        title = first_value(
+            offer,
+            [
+                "title",
+                "name",
+            ],
+            "AWIN Angebot",
+        )
+
+        description = first_value(
+            offer,
+            [
+                "description",
+                "terms",
+            ],
+            "",
+        )
+
+        offer_type = first_value(
+            offer,
+            ["type"],
+            "promotion",
+        )
+
+        coupon_code = first_value(
+            offer,
+            [
+                "voucherCode",
+                "voucher_code",
+                "code",
+            ],
+            "",
+        )
+
+        advertiser_name = first_value(
+            advertiser,
+            ["name"],
+            "AWIN Shop",
+        )
+
+        advertiser_id = first_value(
+            advertiser,
+            ["id"],
+            "",
+        )
+
+        tracking_url = first_value(
+            offer,
+            [
+                "urlTracking",
+                "trackingUrl",
+            ],
+            "",
+        )
+
+        destination_url = first_value(
+            offer,
+            [
+                "url",
+                "destinationUrl",
+            ],
+            "",
+        )
+
+        # Bevorzugt AWIN Tracking URL
+        affiliate_link = (
+            tracking_url
+            or destination_url
+            or ""
+        )
+
+        promotion_id = first_value(
+            offer,
+            [
+                "promotionId",
+                "id",
+            ],
+            "",
+        )
+
+        source_id = make_source_id(
+            "awin",
+            promotion_id,
+            advertiser_id,
+        )
+
+        created = upsert_deal(
+            title=title,
+            category=(
+                "Rabattcode"
+                if offer_type == "voucher"
+                else "Aktion"
+            ),
+            base_price=0.0,
+            coupon_discount=0.0,
+            payment_bonus=0.0,
+            shop_name=advertiser_name,
+            affiliate_link=affiliate_link,
+            coupon_code=coupon_code,
+            description=description,
+            source="awin",
+            source_id=source_id,
+            status="draft",
+        )
+
+        if created:
+            imported += 1
+
+    return imported
+
+
+# ============================================================
+# AWIN DEEPLINK
+# ============================================================
+
+def generate_awin_link(
+    advertiser_id: int,
+    destination_url: str,
+) -> str:
+
+    if not AWIN_PUBLISHER_ID:
+        raise RuntimeError(
+            "AWIN_PUBLISHER_ID fehlt."
+        )
+
+    url = (
+        f"{AWIN_API_BASE}"
+        f"/publishers/{AWIN_PUBLISHER_ID}"
+        f"/linkbuilder/generate"
+    )
+
+    payload = {
+        "advertiserId": advertiser_id,
+        "destinationUrl": destination_url,
+        "shorten": False,
+    }
+
+    response = requests.post(
+        url,
+        headers=awin_headers(),
+        json=payload,
+        timeout=HTTP_TIMEOUT,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    tracking_url = data.get("url")
+
+    if not tracking_url:
+
+        raise RuntimeError(
+            "AWIN hat keinen Tracking-Link zurückgegeben."
+        )
+
+    return tracking_url
+
+
+# ============================================================
+# TRADEDOUBLER PRODUCTS
+# ============================================================
+
+def get_tradedoubler_feeds() -> list[dict]:
+
+    if not TRADEDOUBLER_PRODUCTS_TOKEN:
+
+        raise RuntimeError(
+            "TRADEDOUBLER_PRODUCTS_TOKEN fehlt."
+        )
+
+    url = (
+        f"{TRADEDOUBLER_API_BASE}"
+        f"/productFeeds.json"
+    )
+
+    response = requests.get(
+        url,
+        params={
+            "token":
+                TRADEDOUBLER_PRODUCTS_TOKEN,
+        },
+        timeout=HTTP_TIMEOUT,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if isinstance(data, dict):
+
+        return data.get(
+            "feeds",
+            []
+        )
+
+    return []
+
+
+def get_tradedoubler_products(
+    feed_id: int,
+) -> list[dict]:
+
+    url = (
+        f"{TRADEDOUBLER_API_BASE}"
+        f"/products.json;fid={feed_id}"
+        f";limit={MAX_PRODUCTS_PER_FEED}"
+    )
+
+    response = requests.get(
+        url,
+        params={
+            "token":
+                TRADEDOUBLER_PRODUCTS_TOKEN,
+        },
+        timeout=HTTP_TIMEOUT,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if isinstance(data, list):
+
+        return data
+
+    if isinstance(data, dict):
+
+        return (
+            data.get("products")
+            or data.get("product")
+            or []
+        )
+
+    return []
+
+
+def import_tradedoubler_products() -> int:
+
+    feeds = get_tradedoubler_feeds()
+
+    imported = 0
+
+    for feed in feeds:
+
+        if not isinstance(feed, dict):
+            continue
+
+        if not feed.get(
+            "active",
+            True,
+        ):
+            continue
+
+        feed_id = first_value(
+            feed,
+            ["feedId", "id"],
+        )
+
+        if not feed_id:
+            continue
+
+        products = (
+            get_tradedoubler_products(
+                int(feed_id)
+            )
+        )
 
         for product in products:
 
-            try:
-
-                cursor = conn.execute(
-                    """
-                    INSERT OR IGNORE INTO deal_candidates (
-                        title,
-                        base_price,
-                        category,
-                        source_name,
-                        source_url,
-                        imported_at,
-                        status
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, 'pending')
-                    """,
-                    (
-                        product["title"],
-                        product["base_price"],
-                        product["category"],
-                        product["source_name"],
-                        product["source_url"],
-                        now_iso(),
-                    ),
-                )
-
-                if cursor.rowcount > 0:
-                    imported += 1
-                else:
-                    skipped += 1
-
-            except Exception:
-                skipped += 1
-
-    return {
-        "found": len(products),
-        "imported": imported,
-        "skipped": skipped,
-    }
-
-
-# ============================================================
-# HTML
-# ============================================================
-
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-
-<html lang="de">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>NettoDeals.ch – Schweizer Deals</title>
-
-<script src="https://cdn.tailwindcss.com"></script>
-
-</head>
-
-
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
-
-
-<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
-
-<div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
-
-<div>
-
-<a href="/" class="text-2xl font-black text-indigo-600 tracking-tight">
-
-Netto<span class="text-slate-900">Deals</span>
-
-<span class="text-xs align-super bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded-full font-bold ml-1">
-
-CH
-
-</span>
-
-</a>
-
-</div>
-
-
-<p class="text-sm text-slate-500 hidden sm:block">
-
-Der echte Endpreis nach Gutscheinen & Zahlungs-Boni
-
-</p>
-
-</div>
-
-</header>
-
-
-<main class="max-w-6xl mx-auto px-4 py-8 flex-grow w-full grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-
-<!-- DEALS -->
-
-<section class="lg:col-span-2 space-y-6">
-
-
-<div class="flex justify-between items-center">
-
-<h1 class="text-xl font-bold text-slate-900">
-
-Aktuelle Top-Deals
-
-</h1>
-
-
-<span class="text-sm text-slate-500">
-
-{{ deals|length }} Angebote gefunden
-
-</span>
-
-</div>
-
-
-{% if deals %}
-
-<div class="grid grid-cols-1 gap-4">
-
-
-{% for deal in deals %}
-
-<article class="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition p-5">
-
-
-<div class="flex justify-between items-start gap-3 mb-3">
-
-
-<span class="text-xs font-semibold uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md">
-
-{{ deal["category"] }}
-
-</span>
-
-
-<span class="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-
-{{ deal["shop_name"] }}
-
-</span>
-
-
-</div>
-
-
-<h2 class="text-lg font-bold text-slate-900 mb-3">
-
-{{ deal["title"] }}
-
-</h2>
-
-
-{% if deal["coupon_code"] %}
-
-<div class="mb-3">
-
-<span class="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded">
-
-Gutschein: {{ deal["coupon_code"] }}
-
-</span>
-
-</div>
-
-{% endif %}
-
-
-<div class="flex flex-wrap gap-2 mb-4">
-
-
-{% if deal["coupon_discount"] > 0 %}
-
-<span class="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2 py-1 rounded">
-
-- CHF {{ "%.2f"|format(deal["coupon_discount"]) }}
-
-</span>
-
-{% endif %}
-
-
-{% if deal["payment_bonus"] > 0 %}
-
-<span class="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded">
-
-Zahlungsbonus: - CHF {{ "%.2f"|format(deal["payment_bonus"]) }}
-
-</span>
-
-{% endif %}
-
-
-</div>
-
-
-<div class="pt-4 border-t border-slate-100 flex items-center justify-between">
-
-
-<div>
-
-<div class="text-xs text-slate-400 line-through">
-
-CHF {{ "%.2f"|format(deal["base_price"]) }}
-
-</div>
-
-
-<div class="text-2xl font-black text-indigo-600">
-
-CHF {{ "%.2f"|format(deal["effective_price"]) }}
-
-</div>
-
-</div>
-
-
-<a
-
-href="{{ deal["affiliate_link"] }}"
-
-target="_blank"
-
-rel="nofollow sponsored noopener noreferrer"
-
-class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5 py-2.5 rounded-lg text-sm"
-
->
-
-Zum Deal →
-
-</a>
-
-
-</div>
-
-</article>
-
-
-{% endfor %}
-
-
-</div>
-
-
-{% else %}
-
-
-<div class="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
-
-Noch keine veröffentlichten Deals vorhanden.
-
-</div>
-
-
-{% endif %}
-
-
-</section>
-
-
-<!-- ADMIN -->
-
-<aside>
-
-
-<div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-
-
-<h2 class="text-lg font-bold mb-4">
-
-Admin
-
-</h2>
-
-
-<a
-
-href="/admin"
-
-class="block w-full text-center bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-lg text-sm"
-
->
-
-Deal-Verwaltung öffnen
-
-</a>
-
-
-</div>
-
-
-<div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm mt-4">
-
-
-<h2 class="text-lg font-bold mb-4">
-
-Deal erfassen
-
-</h2>
-
-
-<form action="/deals" method="POST" class="space-y-4">
-
-
-<input
-
-type="text"
-
-name="title"
-
-required
-
-placeholder="Titel"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-type="text"
-
-name="category"
-
-required
-
-value="Elektronik"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-type="number"
-
-step="0.01"
-
-min="0"
-
-name="base_price"
-
-required
-
-placeholder="Grundpreis CHF"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-type="text"
-
-name="coupon_code"
-
-placeholder="Rabattcode"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-type="number"
-
-step="0.01"
-
-min="0"
-
-name="coupon_discount"
-
-value="0"
-
-placeholder="Gutschein-Rabatt"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-type="number"
-
-step="0.01"
-
-min="0"
-
-name="payment_bonus"
-
-value="0"
-
-placeholder="Zahlungsbonus"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-type="text"
-
-name="shop_name"
-
-required
-
-placeholder="Shop"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-type="url"
-
-name="affiliate_link"
-
-required
-
-placeholder="Dein Affiliate-Link"
-
-class="w-full border border-slate-300 rounded-lg px-3 py-2"
-
-/>
-
-
-<button
-
-type="submit"
-
-class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg"
-
->
-
-Deal speichern
-
-</button>
-
-
-</form>
-
-
-</div>
-
-
-</aside>
-
-
-</main>
-
-
-<footer class="bg-white border-t border-slate-200 mt-12 py-6 text-center text-xs text-slate-400">
-
-© 2026 NettoDeals.ch
-
-</footer>
-
-
-</body>
-
-</html>
-"""
-
-
-ADMIN_TEMPLATE = """
-<!DOCTYPE html>
-
-<html lang="de">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>NettoDeals Admin</title>
-
-<script src="https://cdn.tailwindcss.com"></script>
-
-</head>
-
-
-<body class="bg-slate-50 text-slate-800">
-
-
-<div class="max-w-6xl mx-auto px-4 py-8">
-
-
-<div class="flex justify-between items-center mb-8">
-
-<h1 class="text-2xl font-bold">
-
-NettoDeals Admin
-
-</h1>
-
-
-<a href="/" class="text-indigo-600">
-
-← Zur Webseite
-
-</a>
-
-</div>
-
-
-<div class="bg-white border rounded-xl p-6 mb-8">
-
-
-<h2 class="text-lg font-bold mb-4">
-
-Toppreise importieren
-
-</h2>
-
-
-<form action="/admin/import/toppreise" method="POST">
-
-<button
-
-class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-lg"
-
->
-
-Top-100 importieren
-
-</button>
-
-</form>
-
-
-</div>
-
-
-<h2 class="text-xl font-bold mb-4">
-
-Importierte Kandidaten
-
-</h2>
-
-
-<div class="space-y-4">
-
-
-{% for candidate in candidates %}
-
-
-<div class="bg-white border rounded-xl p-5">
-
-
-<div class="flex justify-between gap-4 mb-3">
-
-
-<div>
-
-<h3 class="font-bold">
-
-{{ candidate["title"] }}
-
-</h3>
-
-
-<p class="text-sm text-slate-500">
-
-Toppreise Preis: CHF {{ "%.2f"|format(candidate["base_price"]) }}
-
-</p>
-
-</div>
-
-
-<a
-
-href="{{ candidate["source_url"] }}"
-
-target="_blank"
-
-class="text-sm text-indigo-600"
-
->
-
-Quelle öffnen →
-
-</a>
-
-
-</div>
-
-
-<form
-
-action="/admin/publish/{{ candidate["id"] }}"
-
-method="POST"
-
-class="grid grid-cols-1 md:grid-cols-2 gap-3"
-
-
->
-
-
-<input
-
-name="shop_name"
-
-required
-
-placeholder="Shop, z.B. Digitec"
-
-class="border rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-name="affiliate_link"
-
-type="url"
-
-required
-
-placeholder="Dein echter Affiliate-Link"
-
-class="border rounded-lg px-3 py-2 md:col-span-2"
-
-/>
-
-
-<input
-
-name="coupon_code"
-
-placeholder="Rabattcode"
-
-class="border rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-name="coupon_discount"
-
-type="number"
-
-step="0.01"
-
-min="0"
-
-value="0"
-
-placeholder="CHF Rabatt"
-
-class="border rounded-lg px-3 py-2"
-
-/>
-
-
-<input
-
-name="payment_bonus"
-
-type="number"
-
-step="0.01"
-
-min="0"
-
-value="0"
-
-placeholder="Zahlungsbonus"
-
-class="border rounded-lg px-3 py-2"
-
-/>
-
-
-<button
-
-class="bg-emerald-600 text-white py-2 rounded-lg md:col-span-2"
-
->
-
-Als NettoDeal veröffentlichen
-
-</button>
-
-
-</form>
-
-
-</div>
-
-
-{% else %}
-
-
-<div class="bg-white border rounded-xl p-8 text-slate-500">
-
-Noch keine Kandidaten importiert.
-
-</div>
-
-
-{% endfor %}
-
-
-</div>
-
-
-</div>
-
-</body>
-
-</html>
-"""
-
-
-# ============================================================
-# ROUTES
-# ============================================================
-
-@app.get("/", response_class=HTMLResponse)
-def read_root():
-
-    with get_db() as conn:
-
-        deals = conn.execute(
-            """
-            SELECT *
-            FROM deals
-            ORDER BY id DESC
-            """
-        ).fetchall()
-
-    template = Template(HTML_TEMPLATE)
-
-    return HTMLResponse(
-        template.render(deals=deals)
-    )
-
-
-@app.get("/admin", response_class=HTMLResponse)
-def admin_page():
-
-    with get_db() as conn:
-
-        candidates = conn.execute(
-            """
-            SELECT *
-            FROM deal_candidates
-            WHERE status = 'pending'
-            ORDER BY id DESC
-            """
-        ).fetchall()
-
-    template = Template(ADMIN_TEMPLATE)
-
-    return HTMLResponse(
-        template.render(candidates=candidates)
-    )
-
-
-# ============================================================
-# MANUELLEN DEAL ERSTELLEN
-# ============================================================
-
-@app.post("/deals")
-def create_deal(
-
-    title: str = Form(...),
-    category: str = Form(...),
-    base_price: float = Form(...),
-
-    coupon_code: str = Form(""),
-    coupon_discount: float = Form(0),
-
-    payment_bonus: float = Form(0),
-
-    shop_name: str = Form(...),
-    affiliate_link: str = Form(...),
-
-):
-
-    effective_price = max(
-        0,
-        base_price
-        - coupon_discount
-        - payment_bonus
-    )
-
-    with get_db() as conn:
-
-        conn.execute(
-            """
-            INSERT INTO deals (
-
-                title,
-                category,
-
-                base_price,
-
-                coupon_code,
-                coupon_discount,
-
-                payment_bonus,
-
-                effective_price,
-
-                shop_name,
-
-                affiliate_link,
-
-                source_name,
-                source_url,
-
-                created_at
-
+            if not isinstance(
+                product,
+                dict,
+            ):
+                continue
+
+            title = first_value(
+                product,
+                [
+                    "name",
+                    "title",
+                    "productName",
+                ],
+                "",
             )
 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                title.strip(),
-                category.strip(),
+            if not title:
+                continue
 
-                base_price,
+            price = first_value(
+                product,
+                [
+                    "price",
+                    "salePrice",
+                    "lowestPrice",
+                ],
+                0,
+            )
 
-                coupon_code.strip(),
-                coupon_discount,
+            category = first_value(
+                product,
+                [
+                    "category",
+                    "categoryName",
+                ],
+                "Produkte",
+            )
 
-                payment_bonus,
+            shop_name = first_value(
+                product,
+                [
+                    "programName",
+                    "merchantName",
+                    "advertiserName",
+                    "shopName",
+                ],
+                "TradeDoubler Shop",
+            )
 
-                effective_price,
+            # Wir bevorzugen explizite Tracking-Links.
+            # Falls die API nur eine normale Produkt-URL liefert,
+            # bleibt der Deal als Draft.
 
-                shop_name.strip(),
-
-                affiliate_link.strip(),
-
-                "manual",
+            affiliate_link = first_value(
+                product,
+                [
+                    "trackingUrl",
+                    "trackingURL",
+                    "affiliateUrl",
+                    "clickUrl",
+                ],
                 "",
+            )
 
-                now_iso(),
-            ),
+            description = first_value(
+                product,
+                [
+                    "description",
+                    "shortDescription",
+                ],
+                "",
+            )
+
+            product_id = first_value(
+                product,
+                [
+                    "id",
+                    "productId",
+                    "sku",
+                ],
+                "",
+            )
+
+            source_id = make_source_id(
+                "tradedoubler",
+                feed_id,
+                product_id,
+                title,
+            )
+
+            created = upsert_deal(
+                title=title,
+                category=category,
+                base_price=safe_float(price),
+                coupon_discount=0.0,
+                payment_bonus=0.0,
+                shop_name=shop_name,
+                affiliate_link=affiliate_link,
+                description=description,
+                source="tradedoubler_product",
+                source_id=source_id,
+                status="draft",
+            )
+
+            if created:
+                imported += 1
+
+    return imported
+
+
+# ============================================================
+# TRADEDOUBLER VOUCHERS
+# ============================================================
+
+def import_tradedoubler_vouchers() -> int:
+
+    if not TRADEDOUBLER_VOUCHERS_TOKEN:
+
+        raise RuntimeError(
+            "TRADEDOUBLER_VOUCHERS_TOKEN fehlt."
         )
 
-    return RedirectResponse(
-        "/",
-        status_code=303
+    url = (
+        f"{TRADEDOUBLER_API_BASE}"
+        f"/vouchers.json"
     )
 
+    response = requests.get(
+        url,
+        params={
+            "token":
+                TRADEDOUBLER_VOUCHERS_TOKEN,
+        },
+        timeout=HTTP_TIMEOUT,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    vouchers = []
+
+    if isinstance(data, list):
+
+        vouchers = data
+
+    elif isinstance(data, dict):
+
+        vouchers = (
+            data.get("vouchers")
+            or data.get("voucher")
+            or []
+        )
+
+    imported = 0
+
+    for voucher in vouchers:
+
+        if not isinstance(
+            voucher,
+            dict,
+        ):
+            continue
+
+        title = first_value(
+            voucher,
+            [
+                "title",
+                "name",
+            ],
+            "TradeDoubler Gutschein",
+        )
+
+        code = first_value(
+            voucher,
+            [
+                "code",
+                "voucherCode",
+            ],
+            "",
+        )
+
+        description = first_value(
+            voucher,
+            [
+                "shortDescription",
+                "description",
+            ],
+            "",
+        )
+
+        shop_name = first_value(
+            voucher,
+            [
+                "programName",
+                "advertiserName",
+            ],
+            "TradeDoubler Shop",
+        )
+
+        affiliate_link = first_value(
+            voucher,
+            [
+                "trackingUrl",
+                "url",
+                "landingPage",
+            ],
+            "",
+        )
+
+        voucher_id = first_value(
+            voucher,
+            [
+                "id",
+                "voucherId",
+            ],
+            "",
+        )
+
+        source_id = make_source_id(
+            "tradedoubler_voucher",
+            voucher_id,
+            code,
+            shop_name,
+        )
+
+        created = upsert_deal(
+            title=title,
+            category="Rabattcode",
+            base_price=0.0,
+            coupon_discount=0.0,
+            payment_bonus=0.0,
+            shop_name=shop_name,
+            affiliate_link=affiliate_link,
+            coupon_code=code,
+            description=description,
+            source="tradedoubler_voucher",
+            source_id=source_id,
+            status="draft",
+        )
+
+        if created:
+            imported += 1
+
+    return imported
+
 
 # ============================================================
-# TOPPREISE IMPORT
+# ALLE QUELLEN SYNCHRONISIEREN
 # ============================================================
 
-@app.post("/admin/import/toppreise")
-def import_toppreise_route():
+def sync_all_sources() -> dict:
+
+    result = {
+        "awin": 0,
+        "tradedoubler_products": 0,
+        "tradedoubler_vouchers": 0,
+        "errors": [],
+    }
+
+    # AWIN
 
     try:
 
-        import_toppreise(100)
+        if (
+            AWIN_PUBLISHER_ID
+            and AWIN_API_TOKEN
+        ):
+
+            result["awin"] = (
+                import_awin_offers()
+            )
+
+            log_import(
+                "awin",
+                "success",
+                "AWIN Import erfolgreich.",
+                result["awin"],
+            )
 
     except Exception as exc:
 
-        raise HTTPException(
-            status_code=500,
-            detail=f"Import fehlgeschlagen: {str(exc)}"
+        result["errors"].append(
+            f"AWIN: {exc}"
         )
 
-    return RedirectResponse(
-        "/admin",
-        status_code=303
-    )
+        log_import(
+            "awin",
+            "error",
+            str(exc),
+        )
 
+    # TRADEDOUBLER PRODUCTS
 
-# ============================================================
-# KANDIDAT VERÖFFENTLICHEN
-# ============================================================
+    try:
 
-@app.post("/admin/publish/{candidate_id}")
-def publish_candidate(
+        if TRADEDOUBLER_PRODUCTS_TOKEN:
 
-    candidate_id: int,
-
-    shop_name: str = Form(...),
-    affiliate_link: str = Form(...),
-
-    coupon_code: str = Form(""),
-    coupon_discount: float = Form(0),
-
-    payment_bonus: float = Form(0),
-
-):
-
-    with get_db() as conn:
-
-        candidate = conn.execute(
-            """
-            SELECT *
-            FROM deal_candidates
-            WHERE id = ?
-            AND status = 'pending'
-            """,
-            (candidate_id,),
-        ).fetchone()
-
-        if not candidate:
-
-            raise HTTPException(
-                status_code=404,
-                detail="Kandidat nicht gefunden."
+            result[
+                "tradedoubler_products"
+            ] = (
+                import_tradedoubler_products()
             )
 
-        effective_price = max(
-            0,
-            candidate["base_price"]
-            - coupon_discount
-            - payment_bonus
-        )
-
-        conn.execute(
-            """
-            INSERT INTO deals (
-
-                title,
-                category,
-
-                base_price,
-
-                coupon_code,
-                coupon_discount,
-
-                payment_bonus,
-
-                effective_price,
-
-                shop_name,
-
-                affiliate_link,
-
-                source_name,
-                source_url,
-
-                created_at
-
+            log_import(
+                "tradedoubler_products",
+                "success",
+                "TradeDoubler Products Import erfolgreich.",
+                result[
+                    "tradedoubler_products"
+                ],
             )
 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                candidate["title"],
-                candidate["category"],
+    except Exception as exc:
 
-                candidate["base_price"],
-
-                coupon_code.strip(),
-                coupon_discount,
-
-                payment_bonus,
-
-                effective_price,
-
-                shop_name.strip(),
-
-                affiliate_link.strip(),
-
-                candidate["source_name"],
-                candidate["source_url"],
-
-                now_iso(),
-            ),
+        result["errors"].append(
+            f"TradeDoubler Products: {exc}"
         )
 
-        conn.execute(
-            """
-            UPDATE deal_candidates
-            SET status = 'published'
-            WHERE id = ?
-            """,
-            (candidate_id,),
+        log_import(
+            "tradedoubler_products",
+            "error",
+            str(exc),
         )
 
-    return RedirectResponse(
-        "/",
-        status_code=303
-    )
+    # TRADEDOUBLER VOUCHERS
+
+    try:
+
+        if TRADEDOUBLER_VOUCHERS_TOKEN:
+
+            result[
+                "tradedoubler_vouchers"
+            ] = (
+                import_tradedoubler_vouchers()
+            )
+
+            log_import(
+                "tradedoubler_vouchers",
+                "success",
+                "TradeDoubler Vouchers Import erfolgreich.",
+                result[
+                    "tradedoubler_vouchers"
+                ],
+            )
+
+    except Exception as exc:
+
+        result["errors"].append(
+            f"TradeDoubler Vouchers: {exc}"
+        )
+
+        log_import(
+            "tradedoubler_vouchers",
+            "error",
+            str(exc),
+        )
+
+    return result
 
 
 # ============================================================
@@ -1294,12 +1248,26 @@ def health_check():
     try:
 
         with get_db() as conn:
-            conn.execute("SELECT 1")
+
+            conn.execute(
+                "SELECT 1"
+            )
 
         return JSONResponse(
             {
                 "status": "healthy",
                 "database": "connected",
+                "awin_configured": bool(
+                    AWIN_API_TOKEN
+                ),
+                "tradedoubler_products_configured":
+                    bool(
+                        TRADEDOUBLER_PRODUCTS_TOKEN
+                    ),
+                "tradedoubler_vouchers_configured":
+                    bool(
+                        TRADEDOUBLER_VOUCHERS_TOKEN
+                    ),
             }
         )
 
@@ -1315,27 +1283,711 @@ def health_check():
 
 
 # ============================================================
-# API TEST
+# HOMEPAGE
 # ============================================================
 
-@app.get("/api/toppreise-preview")
-def toppreise_preview():
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="de">
 
-    try:
+<head>
 
-        products = fetch_toppreise_products(20)
+<meta charset="UTF-8">
 
-        return {
-            "count": len(products),
-            "products": products,
-        }
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-    except Exception as exc:
+<title>NettoDeals.ch – Schweizer Deals</title>
 
-        raise HTTPException(
-            status_code=500,
-            detail=str(exc)
+<script src="https://cdn.tailwindcss.com"></script>
+
+</head>
+
+
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
+
+
+<header class="bg-white border-b border-slate-200">
+
+<div class="max-w-7xl mx-auto px-4 py-5 flex justify-between items-center">
+
+<div>
+
+<h1 class="text-2xl font-black text-indigo-600">
+
+Netto<span class="text-slate-900">Deals</span>
+
+<span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
+CH
+</span>
+
+</h1>
+
+</div>
+
+
+<p class="text-sm text-slate-500 hidden md:block">
+
+Der echte Endpreis nach Gutscheinen & Aktionen
+
+</p>
+
+</div>
+
+</header>
+
+
+<main class="max-w-7xl mx-auto px-4 py-8 w-full flex-grow">
+
+
+<div class="flex justify-between items-center mb-6">
+
+<div>
+
+<h2 class="text-2xl font-bold">
+
+Aktuelle Top-Deals
+
+</h2>
+
+<p class="text-sm text-slate-500 mt-1">
+
+{{ deals|length }} veröffentlichte Angebote
+
+</p>
+
+</div>
+
+</div>
+
+
+{% if deals %}
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+
+{% for deal in deals %}
+
+<article class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col">
+
+
+<div class="flex justify-between gap-3 mb-3">
+
+<span class="text-xs font-semibold bg-indigo-50 text-indigo-700 px-2 py-1 rounded">
+
+{{ deal["category"] }}
+
+</span>
+
+
+<span class="text-xs text-slate-500">
+
+{{ deal["shop_name"] }}
+
+</span>
+
+</div>
+
+
+<h3 class="font-bold text-lg mb-3">
+
+{{ deal["title"] }}
+
+</h3>
+
+
+{% if deal["description"] %}
+
+<p class="text-sm text-slate-500 mb-4">
+
+{{ deal["description"] }}
+
+</p>
+
+{% endif %}
+
+
+{% if deal["coupon_code"] %}
+
+<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+
+<div class="text-xs text-amber-700">
+
+Rabattcode
+
+</div>
+
+<div class="font-bold text-amber-900">
+
+{{ deal["coupon_code"] }}
+
+</div>
+
+</div>
+
+{% endif %}
+
+
+<div class="mt-auto pt-4 border-t border-slate-100">
+
+
+{% if deal["base_price"] > 0 %}
+
+<div class="text-sm text-slate-400 line-through">
+
+CHF {{ "%.2f"|format(deal["base_price"]) }}
+
+</div>
+
+
+<div class="text-2xl font-black text-indigo-600">
+
+CHF {{ "%.2f"|format(deal["effective_price"]) }}
+
+</div>
+
+{% else %}
+
+<div class="text-sm font-semibold text-indigo-600">
+
+Aktion ansehen
+
+</div>
+
+{% endif %}
+
+
+{% if deal["affiliate_link"] %}
+
+<a
+href="{{ deal["affiliate_link"] }}"
+target="_blank"
+rel="nofollow sponsored noopener noreferrer"
+class="block mt-4 text-center bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 rounded-xl"
+>
+
+Zum Deal →
+
+</a>
+
+{% endif %}
+
+</div>
+
+</article>
+
+{% endfor %}
+
+</div>
+
+
+{% else %}
+
+<div class="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+
+<h3 class="font-bold text-lg">
+
+Noch keine Deals veröffentlicht
+
+</h3>
+
+<p class="text-slate-500 mt-2">
+
+Neue Angebote werden automatisch geprüft.
+
+</p>
+
+</div>
+
+{% endif %}
+
+
+</main>
+
+
+<footer class="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-400">
+
+© 2026 NettoDeals.ch
+
+</footer>
+
+
+</body>
+
+</html>
+"""
+
+
+@app.get(
+    "/",
+    response_class=HTMLResponse,
+)
+def read_root():
+
+    with get_db() as conn:
+
+        deals = conn.execute(
+            """
+            SELECT *
+            FROM deals
+
+            WHERE status = 'published'
+
+            ORDER BY
+                effective_price ASC,
+                updated_at DESC
+            """
+        ).fetchall()
+
+    template = Template(
+        HTML_TEMPLATE
+    )
+
+    return HTMLResponse(
+        template.render(
+            deals=deals
         )
+    )
+
+
+# ============================================================
+# ADMIN DASHBOARD
+# ============================================================
+
+ADMIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>NettoDeals Admin</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+</head>
+
+
+<body class="bg-slate-100">
+
+
+<div class="max-w-7xl mx-auto px-4 py-8">
+
+
+<h1 class="text-3xl font-black mb-2">
+
+NettoDeals Admin
+
+</h1>
+
+
+<p class="text-slate-500 mb-8">
+
+Automatisierung & Deal-Freigabe
+
+</p>
+
+
+<form
+action="/admin/sync"
+method="post"
+class="bg-white rounded-xl p-6 border mb-8"
+>
+
+<label class="block text-sm font-semibold mb-2">
+
+Admin Token
+
+</label>
+
+<input
+type="password"
+name="admin_token"
+required
+class="w-full border rounded-lg px-3 py-2 mb-4"
+placeholder="ADMIN_TOKEN"
+>
+
+
+<button
+class="bg-indigo-600 text-white px-5 py-3 rounded-lg font-semibold"
+>
+
+🔄 Alle Quellen synchronisieren
+
+</button>
+
+</form>
+
+
+<h2 class="text-xl font-bold mb-4">
+
+Entwürfe zur Prüfung
+
+</h2>
+
+
+<div class="space-y-4">
+
+{% for deal in drafts %}
+
+<div class="bg-white border rounded-xl p-5">
+
+
+<div class="flex justify-between gap-4">
+
+
+<div>
+
+<div class="text-xs text-slate-400 mb-1">
+
+{{ deal["source"] }}
+
+</div>
+
+
+<h3 class="font-bold text-lg">
+
+{{ deal["title"] }}
+
+</h3>
+
+
+<p class="text-sm text-slate-500">
+
+{{ deal["shop_name"] }}
+
+</p>
+
+
+{% if deal["coupon_code"] %}
+
+<p class="text-sm mt-2">
+
+Code:
+<strong>{{ deal["coupon_code"] }}</strong>
+
+</p>
+
+{% endif %}
+
+
+{% if deal["affiliate_link"] %}
+
+<a
+href="{{ deal["affiliate_link"] }}"
+target="_blank"
+class="text-sm text-indigo-600"
+>
+
+Link testen →
+
+</a>
+
+{% endif %}
+
+
+</div>
+
+
+<div class="flex flex-col gap-2">
+
+
+<form
+action="/admin/deals/{{ deal["id"] }}/publish"
+method="post"
+>
+
+<input
+type="hidden"
+name="admin_token"
+value=""
+class="admin-token-input"
+>
+
+<button
+type="button"
+onclick="submitWithToken(this.form)"
+class="bg-emerald-600 text-white px-4 py-2 rounded-lg"
+>
+
+✓ Veröffentlichen
+
+</button>
+
+</form>
+
+
+<form
+action="/admin/deals/{{ deal["id"] }}/delete"
+method="post"
+>
+
+<input
+type="hidden"
+name="admin_token"
+value=""
+class="admin-token-input"
+>
+
+<button
+type="button"
+onclick="submitWithToken(this.form)"
+class="bg-red-600 text-white px-4 py-2 rounded-lg"
+>
+
+✕ Löschen
+
+</button>
+
+</form>
+
+
+</div>
+
+
+</div>
+
+</div>
+
+{% endfor %}
+
+</div>
+
+
+</div>
+
+
+<script>
+
+function submitWithToken(form) {
+
+    const token = prompt("Admin Token:");
+
+    if (!token) {
+        return;
+    }
+
+    form.querySelector(
+        'input[name="admin_token"]'
+    ).value = token;
+
+    form.submit();
+}
+
+</script>
+
+
+</body>
+
+</html>
+"""
+
+
+@app.get(
+    "/admin",
+    response_class=HTMLResponse,
+)
+def admin_page():
+
+    with get_db() as conn:
+
+        drafts = conn.execute(
+            """
+            SELECT *
+            FROM deals
+
+            WHERE status = 'draft'
+
+            ORDER BY updated_at DESC
+
+            LIMIT 500
+            """
+        ).fetchall()
+
+    template = Template(
+        ADMIN_TEMPLATE
+    )
+
+    return HTMLResponse(
+        template.render(
+            drafts=drafts
+        )
+    )
+
+
+# ============================================================
+# SYNC
+# ============================================================
+
+@app.post("/admin/sync")
+def admin_sync(
+    admin_token: str = Form(...),
+):
+
+    verify_admin_token(
+        admin_token
+    )
+
+    result = sync_all_sources()
+
+    return RedirectResponse(
+        url="/admin",
+        status_code=303,
+    )
+
+
+# ============================================================
+# DEAL VERÖFFENTLICHEN
+# ============================================================
+
+@app.post(
+    "/admin/deals/{deal_id}/publish"
+)
+def publish_deal(
+    deal_id: int,
+    admin_token: str = Form(...),
+):
+
+    verify_admin_token(
+        admin_token
+    )
+
+    with get_db() as conn:
+
+        conn.execute(
+            """
+            UPDATE deals
+
+            SET
+                status = 'published',
+                updated_at = ?
+
+            WHERE id = ?
+            """,
+            (
+                now_iso(),
+                deal_id,
+            ),
+        )
+
+    return RedirectResponse(
+        url="/admin",
+        status_code=303,
+    )
+
+
+# ============================================================
+# DEAL LÖSCHEN
+# ============================================================
+
+@app.post(
+    "/admin/deals/{deal_id}/delete"
+)
+def delete_deal(
+    deal_id: int,
+    admin_token: str = Form(...),
+):
+
+    verify_admin_token(
+        admin_token
+    )
+
+    with get_db() as conn:
+
+        conn.execute(
+            """
+            DELETE FROM deals
+            WHERE id = ?
+            """,
+            (deal_id,),
+        )
+
+    return RedirectResponse(
+        url="/admin",
+        status_code=303,
+    )
+
+
+# ============================================================
+# MANUELLER DEAL
+# ============================================================
+
+@app.post("/admin/deals/create")
+def create_manual_deal(
+    admin_token: str = Form(...),
+    title: str = Form(...),
+    category: str = Form("Deals"),
+    base_price: float = Form(0.0),
+    coupon_discount: float = Form(0.0),
+    payment_bonus: float = Form(0.0),
+    shop_name: str = Form(...),
+    affiliate_link: str = Form(...),
+    coupon_code: str = Form(""),
+    description: str = Form(""),
+):
+
+    verify_admin_token(
+        admin_token
+    )
+
+    upsert_deal(
+        title=title,
+        category=category,
+        base_price=base_price,
+        coupon_discount=coupon_discount,
+        payment_bonus=payment_bonus,
+        shop_name=shop_name,
+        affiliate_link=affiliate_link,
+        coupon_code=coupon_code,
+        description=description,
+        source="manual",
+        source_id=make_source_id(
+            "manual",
+            title,
+            affiliate_link,
+        ),
+        status="published",
+    )
+
+    return RedirectResponse(
+        url="/",
+        status_code=303,
+    )
+
+
+# ============================================================
+# API STATUS
+# ============================================================
+
+@app.get("/api/status")
+def api_status():
+
+    return {
+
+        "app": "NettoDeals",
+
+        "awin": bool(
+            AWIN_PUBLISHER_ID
+            and AWIN_API_TOKEN
+        ),
+
+        "tradedoubler_products": bool(
+            TRADEDOUBLER_PRODUCTS_TOKEN
+        ),
+
+        "tradedoubler_vouchers": bool(
+            TRADEDOUBLER_VOUCHERS_TOKEN
+        ),
+
+        "database": DB_PATH,
+
+    }
 
 
 # ============================================================
