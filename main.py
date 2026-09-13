@@ -1,5 +1,6 @@
 # main.py
 from datetime import datetime
+import os
 import sqlite3
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -8,7 +9,9 @@ import uvicorn
 
 app = FastAPI(title="NettoDeals", version="1.0.0")
 
-DB_FILE = "nettodeals.db"
+DB_DIR = "/data"
+os.makedirs(DB_DIR, exist_ok=True)
+DB_FILE = os.path.join(DB_DIR, "nettodeals.db")
 
 
 def init_db():
@@ -34,7 +37,6 @@ def init_db():
 
 init_db()
 
-# Embedded HTML Template with Tailwind CSS
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="de">
@@ -186,7 +188,6 @@ def create_deal(
     shop_name: str = Form(...),
     affiliate_link: str = Form(...),
 ):
-  # Automatic calculation of effective price
   effective_price = base_price - coupon_discount - payment_bonus
   if effective_price < 0:
     effective_price = 0.0
