@@ -11,6 +11,15 @@ from jinja2 import Template
 
 app = FastAPI()
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.get("/", response_class=HTMLResponse)
+def read_root():
+    template = Template(HTML_TEMPLATE)
+    return template.render()
+
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 DB_PATH = os.getenv("DB_PATH", "/data/nettodeals.db")
 
