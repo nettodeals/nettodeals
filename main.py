@@ -3,10 +3,13 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from html import escape
+from html.parser import HTMLParser
 import hashlib
 import os
 import sqlite3
+import re
 from typing import Any, Optional
+from urllib.parse import urljoin
 
 import requests
 import uvicorn
@@ -68,6 +71,39 @@ MAX_PRODUCTS_PER_FEED = int(
 
 HTTP_TIMEOUT = int(
     os.getenv("HTTP_TIMEOUT", "30")
+)
+
+# ------------------------------------------------------------
+# TOPPREISE.CH – Trend-/Popularitätsquelle
+# ------------------------------------------------------------
+# Toppreise dient ausschliesslich als Signal für stark nachgefragte
+# Produkte. Die Seite ist KEIN Affiliate-Partner; deshalb werden
+# Toppreise-Produkte nie automatisch veröffentlicht.
+TOPPREISE_ENABLED = os.getenv("TOPPREISE_ENABLED", "true").lower() in (
+    "1", "true", "yes", "on"
+)
+TOPPREISE_URL = os.getenv(
+    "TOPPREISE_URL",
+    "https://www.toppreise.ch/topprodukte",
+)
+TOPPREISE_MAX_PRODUCTS = int(
+    os.getenv("TOPPREISE_MAX_PRODUCTS", "50")
+)
+
+# Zweite Trendquelle: Produkte mit neu erreichten/aktualisierten Toppreisen.
+TOPPREISE_NEW_ENABLED = os.getenv("TOPPREISE_NEW_ENABLED", "true").lower() in (
+    "1", "true", "yes", "on"
+)
+TOPPREISE_NEW_URL = os.getenv(
+    "TOPPREISE_NEW_URL",
+    "https://www.toppreise.ch/neue-toppreise",
+)
+TOPPREISE_NEW_MAX_PRODUCTS = int(
+    os.getenv("TOPPREISE_NEW_MAX_PRODUCTS", str(TOPPREISE_MAX_PRODUCTS))
+)
+TOPPREISE_USER_AGENT = os.getenv(
+    "TOPPREISE_USER_AGENT",
+    "NettoDeals/2.1 (+https://nettodeals.ch)"
 )
 
 
@@ -178,10 +214,33 @@ def init_db() -> None:
             """
         )
 
+        # Leichte Migration für bestehende Datenbanken
+        existing_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(deals)").fetchall()
+        }
+
+        for column, definition in (
+            ("popularity_rank", "INTEGER"),
+            ("source_url", "TEXT"),
+            ("last_checked_at", "TEXT"),
+        ):
+            if column not in existing_columns:
+                conn.execute(
+                    f"ALTER TABLE deals ADD COLUMN {column} {definition}"
+                )
+
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_deals_status
             ON deals(status)
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_deals_source
+            ON deals(source)
             """
         )
 
@@ -1124,6 +1183,267 @@ def import_tradedoubler_vouchers() -> int:
     return imported
 
 
+
+# ============================================================
+# TOPPREISE – BELIEBTE PRODUKTE ALS NACHFRAGE-SIGNAL
+# ============================================================
+
+class _ToppreiseTextParser(HTMLParser):
+    """Kleiner stdlib-Parser, damit keine zusätzliche Dependency nötig ist."""
+
+    def __init__(self):
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        text = " ".join(data.split())
+        if text:
+            self.parts.append(text)
+
+    @property
+    def text(self) -> str:
+        return "\n".join(self.parts)
+
+
+def normalize_toppreise_title(value: str) -> str:
+    value = re.sub(r"\s+", " ", value or "").strip()
+    value = re.sub(r"^(?:Top 100|Topprodukte|Beliebte Produkte)\s*", "", value, flags=re.I)
+    return value[:300]
+
+
+def parse_chf_price(value: str) -> float:
+    value = (value or "").replace("'", "").replace("’", "")
+    value = value.replace(" ", "").replace(",", ".")
+    return safe_float(value)
+
+
+def scrape_toppreise_products(source_url: str = TOPPREISE_URL, max_products: int = TOPPREISE_MAX_PRODUCTS) -> list[dict]:
+    """Liest Toppreise als Popularitäts-/Trendquelle.
+
+    Der Parser ist bewusst tolerant, weil sich das Markup einer fremden Seite
+    ändern kann. Bei einer Änderung bleibt der Import als Fehler im Admin-Log
+    sichtbar statt die Anwendung zu stoppen.
+    """
+
+    response = requests.get(
+        source_url,
+        headers={
+            "User-Agent": TOPPREISE_USER_AGENT,
+            "Accept-Language": "de-CH,de;q=0.9,en;q=0.7",
+        },
+        timeout=HTTP_TIMEOUT,
+    )
+    response.raise_for_status()
+
+    parser = _ToppreiseTextParser()
+    parser.feed(response.text)
+    text = parser.text
+
+    # Die Seite enthält Produktname gefolgt von "ab CHF ..." bzw.
+    # in der englischen Variante "from CHF ...".
+    pattern = re.compile(
+        r"(?P<title>[A-Za-z0-9ÄÖÜäöüÀ-ÿ][^\n]{2,260}?)\s+"
+        r"(?:ab|from)\s+CHF\s*(?P<price>[0-9'’.,]+)",
+        re.IGNORECASE,
+    )
+
+    blocked = {
+        "toppreise", "top 100", "topbewertungen", "neue produkte", "neue toppreise",
+        "shops", "marken", "black friday", "verfügbarkeit",
+    }
+    products: list[dict] = []
+    seen: set[str] = set()
+
+    for match in pattern.finditer(text):
+        title = normalize_toppreise_title(match.group("title"))
+        price = parse_chf_price(match.group("price"))
+        key = title.casefold()
+
+        if (
+            len(title) < 4
+            or key in seen
+            or any(title.casefold() == item for item in blocked)
+        ):
+            continue
+
+        # Navigationstexte oder offensichtlich lange Sammeltexte aussortieren.
+        if title.count(" ") > 32:
+            continue
+
+        seen.add(key)
+        products.append(
+            {
+                "title": title,
+                "price": price,
+                "source_url": source_url,
+            }
+        )
+
+        if len(products) >= max_products:
+            break
+
+    if not products:
+        raise RuntimeError(
+            "Toppreise-Seite wurde geladen, aber keine Produkte konnten "
+            "aus dem aktuellen Seitenformat erkannt werden."
+        )
+
+    return products
+
+
+def _meaningful_tokens(value: str) -> set[str]:
+    stopwords = {
+        "der", "die", "das", "und", "mit", "für", "von", "the",
+        "edition", "digital", "black", "white", "schwarz", "weiss",
+        "grau", "blue", "pro", "plus", "gb", "tb", "chf",
+    }
+    tokens = re.findall(r"[A-Za-zÄÖÜäöü0-9]{3,}", (value or "").casefold())
+    return {token for token in tokens if token not in stopwords}
+
+
+def find_coupon_matches(product_title: str, limit: int = 3) -> list[dict]:
+    """Sucht bereits importierte Gutscheine, die semantisch zum Produkt passen.
+
+    Ohne Händlerzuordnung darf ein Gutschein nicht als garantiert gültig
+    dargestellt werden. Deshalb werden Treffer nur als "zu prüfen" markiert.
+    """
+
+    product_tokens = _meaningful_tokens(product_title)
+    if not product_tokens:
+        return []
+
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, title, shop_name, coupon_code, description, source
+            FROM deals
+            WHERE coupon_code IS NOT NULL
+              AND TRIM(coupon_code) <> ''
+            ORDER BY updated_at DESC
+            LIMIT 2000
+            """
+        ).fetchall()
+
+    matches: list[tuple[int, dict]] = []
+
+    for row in rows:
+        haystack = " ".join(
+            str(row[key] or "")
+            for key in ("title", "shop_name", "description")
+        )
+        overlap = product_tokens & _meaningful_tokens(haystack)
+        score = len(overlap)
+
+        # Ein einzelnes Markenwort ist oft zu unsicher.
+        if score >= 2:
+            matches.append((score, dict(row)))
+
+    matches.sort(key=lambda item: item[0], reverse=True)
+    return [row for _, row in matches[:limit]]
+
+
+def import_toppreise_products(
+    source: str = "toppreise",
+    source_url: str = TOPPREISE_URL,
+    max_products: int = TOPPREISE_MAX_PRODUCTS,
+    trend_label: str = "Toppreise Popularitätsrang",
+) -> int:
+    products = scrape_toppreise_products(source_url, max_products)
+    imported = 0
+
+    for rank, product in enumerate(products, start=1):
+        title = product["title"]
+        price = safe_float(product.get("price"))
+        matches = find_coupon_matches(title)
+
+        coupon_code = ""
+        description_parts = [
+            f"{trend_label}: #{rank}. ",
+            "Produkt wurde als stark nachgefragt erkannt.",
+        ]
+
+        if matches:
+            # Nur den besten Kandidaten anzeigen; der Deal bleibt Draft,
+            # damit der Admin die tatsächliche Gutschein-Gültigkeit prüft.
+            best = matches[0]
+            coupon_code = str(best.get("coupon_code") or "")
+            description_parts.append(
+                f" Gutschein-Kandidat gefunden bei {best.get('shop_name') or 'unbekanntem Shop'} "
+                f"(Quelle: {best.get('source')}). Bitte vor Veröffentlichung prüfen."
+            )
+        else:
+            description_parts.append(
+                " Kein passender Rabattcode in den aktuell importierten Gutscheinquellen gefunden."
+            )
+
+        source_id = make_source_id(source, title)
+        timestamp = now_iso()
+
+        with get_db() as conn:
+            existing = conn.execute(
+                """
+                SELECT id FROM deals
+                WHERE source = ? AND source_id = ?
+                """,
+                (source, source_id),
+            ).fetchone()
+
+            values = (
+                title,
+                "Topprodukt",
+                price,
+                0.0,
+                0.0,
+                price,
+                "Toppreise.ch",
+                "",
+                coupon_code,
+                "".join(description_parts),
+                rank,
+                product.get("source_url") or source_url,
+                timestamp,
+                timestamp,
+            )
+
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE deals
+                    SET title = ?, category = ?, base_price = ?,
+                        coupon_discount = ?, payment_bonus = ?, effective_price = ?,
+                        shop_name = ?, affiliate_link = ?, coupon_code = ?,
+                        description = ?, popularity_rank = ?, source_url = ?,
+                        last_checked_at = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    values + (existing["id"],),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO deals (
+                        title, category, base_price, coupon_discount,
+                        payment_bonus, effective_price, shop_name,
+                        affiliate_link, coupon_code, description,
+                        source, source_id, status, created_at, updated_at,
+                        popularity_rank, source_url, last_checked_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        title, "Topprodukt", price, 0.0, 0.0, price,
+                        "Toppreise.ch", "", coupon_code,
+                        "".join(description_parts), source, source_id,
+                        timestamp, timestamp, rank,
+                        product.get("source_url") or source_url,
+                        timestamp,
+                    ),
+                )
+                imported += 1
+
+    return imported
+
+
 # ============================================================
 # ALLE QUELLEN SYNCHRONISIEREN
 # ============================================================
@@ -1134,6 +1454,8 @@ def sync_all_sources() -> dict:
         "awin": 0,
         "tradedoubler_products": 0,
         "tradedoubler_vouchers": 0,
+        "toppreise": 0,
+        "toppreise_new": 0,
         "errors": [],
     }
 
@@ -1235,6 +1557,40 @@ def sync_all_sources() -> dict:
             str(exc),
         )
 
+    # TOPPREISE – erst NACH Gutscheinquellen, damit neue Gutscheine
+    # sofort beim Abgleich berücksichtigt werden.
+    try:
+        if TOPPREISE_ENABLED:
+            result["toppreise"] = import_toppreise_products(
+                source="toppreise",
+                source_url=TOPPREISE_URL,
+                max_products=TOPPREISE_MAX_PRODUCTS,
+                trend_label="Toppreise Popularitätsrang",
+            )
+            log_import(
+                "toppreise",
+                "success",
+                "Toppreise Topprodukte importiert und auf Gutschein-Kandidaten geprüft.",
+                result["toppreise"],
+            )
+
+        if TOPPREISE_NEW_ENABLED:
+            result["toppreise_new"] = import_toppreise_products(
+                source="toppreise_new",
+                source_url=TOPPREISE_NEW_URL,
+                max_products=TOPPREISE_NEW_MAX_PRODUCTS,
+                trend_label="Toppreise Neue-Toppreise-Rang",
+            )
+            log_import(
+                "toppreise_new",
+                "success",
+                "Toppreise Neue Toppreise importiert und auf Gutschein-Kandidaten geprüft.",
+                result["toppreise_new"],
+            )
+    except Exception as exc:
+        result["errors"].append(f"Toppreise: {exc}")
+        log_import("toppreise", "error", str(exc))
+
     return result
 
 
@@ -1268,6 +1624,7 @@ def health_check():
                     bool(
                         TRADEDOUBLER_VOUCHERS_TOKEN
                     ),
+                "toppreise_enabled": TOPPREISE_ENABLED,
             }
         )
 
@@ -1558,288 +1915,218 @@ def read_root():
 ADMIN_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="de">
-
 <head>
-
 <meta charset="UTF-8">
-
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NettoDeals Admin</title>
-
 <script src="https://cdn.tailwindcss.com"></script>
-
 </head>
-
-
-<body class="bg-slate-100">
-
-
+<body class="bg-slate-100 text-slate-900">
 <div class="max-w-7xl mx-auto px-4 py-8">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+    <div>
+      <h1 class="text-3xl font-black">NettoDeals Admin</h1>
+      <p class="text-slate-500">Trendprodukte, Gutschein-Abgleich und Deal-Freigabe</p>
+    </div>
+    <a href="/" class="text-sm text-indigo-600 font-semibold">↗ Öffentliche Seite</a>
+  </div>
 
+  {% if sync_result %}
+  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-5 mb-6">
+    <div class="font-bold text-indigo-900 mb-2">Synchronisierung abgeschlossen</div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+      <div>AWIN: <strong>{{ sync_result["awin"] }}</strong></div>
+      <div>TradeDoubler Produkte: <strong>{{ sync_result["tradedoubler_products"] }}</strong></div>
+      <div>TradeDoubler Gutscheine: <strong>{{ sync_result["tradedoubler_vouchers"] }}</strong></div>
+      <div>Toppreise Topprodukte: <strong>{{ sync_result["toppreise"] }}</strong></div>
+      <div>Toppreise Neue Toppreise: <strong>{{ sync_result["toppreise_new"] }}</strong></div>
+    </div>
+    {% if sync_result["errors"] %}
+      <div class="mt-3 text-sm text-red-700">
+        {% for error in sync_result["errors"] %}<div>⚠ {{ error }}</div>{% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
-<h1 class="text-3xl font-black mb-2">
+  <section class="bg-white rounded-xl border p-6 mb-8">
+    <div class="flex flex-col md:flex-row gap-4 md:items-end">
+      <div class="flex-1">
+        <label class="block text-sm font-semibold mb-2">Admin Token</label>
+        <input id="admin-token" type="password" class="w-full border rounded-lg px-3 py-2" placeholder="ADMIN_TOKEN" autocomplete="current-password">
+        <p class="text-xs text-slate-400 mt-2">Der Token bleibt nur in diesem Browser (localStorage) und wird bei jeder Admin-Aktion mitgesendet.</p>
+      </div>
+      <form action="/admin/sync" method="post" onsubmit="return attachToken(this)">
+        <input type="hidden" name="admin_token">
+        <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-lg font-semibold">🔄 Quellen synchronisieren</button>
+      </form>
+    </div>
+    <div id="token-status" class="text-xs mt-3"></div>
+  </section>
 
-NettoDeals Admin
+  <section class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+    <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Entwürfe</div><div class="text-2xl font-black">{{ stats.drafts }}</div></div>
+    <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Veröffentlicht</div><div class="text-2xl font-black">{{ stats.published }}</div></div>
+    <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Toppreise Topprodukte</div><div class="text-2xl font-black">{{ stats.toppreise }}</div></div>
+    <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Neue Toppreise</div><div class="text-2xl font-black">{{ stats.toppreise_new }}</div></div>
+    <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Gutschein-Kandidaten</div><div class="text-2xl font-black">{{ stats.coupon_candidates }}</div></div>
+  </section>
 
-</h1>
+  <section class="bg-white rounded-xl border p-6 mb-8">
+    <h2 class="text-xl font-bold mb-4">Manuellen Deal anlegen</h2>
+    <form action="/admin/deals/create" method="post" onsubmit="return attachToken(this)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <input type="hidden" name="admin_token">
+      <input required name="title" class="border rounded-lg px-3 py-2" placeholder="Deal-Titel">
+      <input required name="shop_name" class="border rounded-lg px-3 py-2" placeholder="Shop">
+      <input name="affiliate_link" class="border rounded-lg px-3 py-2" placeholder="Affiliate-/Deal-Link (https://...)">
+      <input name="coupon_code" class="border rounded-lg px-3 py-2" placeholder="Rabattcode (optional)">
+      <input name="base_price" type="number" step="0.01" class="border rounded-lg px-3 py-2" placeholder="Preis in CHF">
+      <input name="category" class="border rounded-lg px-3 py-2" value="Deals">
+      <textarea name="description" class="border rounded-lg px-3 py-2 md:col-span-2" placeholder="Beschreibung / Bedingungen"></textarea>
+      <div class="md:col-span-2"><button class="bg-slate-900 text-white px-5 py-3 rounded-lg font-semibold">Deal veröffentlichen</button></div>
+    </form>
+  </section>
 
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h2 class="text-xl font-bold">Entwürfe zur Prüfung</h2>
+      <p class="text-sm text-slate-500">Toppreise-Einträge sind Nachfrage-Signale und werden nie automatisch veröffentlicht.</p>
+    </div>
+  </div>
 
-<p class="text-slate-500 mb-8">
+  <div class="space-y-4">
+  {% for deal in drafts %}
+    <article class="bg-white border rounded-xl p-5">
+      <div class="flex flex-col lg:flex-row lg:justify-between gap-5">
+        <div class="min-w-0">
+          <div class="flex flex-wrap gap-2 mb-2">
+            <span class="text-xs bg-slate-100 px-2 py-1 rounded">{{ deal["source"] }}</span>
+            {% if deal["popularity_rank"] %}<span class="text-xs bg-violet-100 text-violet-700 px-2 py-1 rounded">🔥 Rang #{{ deal["popularity_rank"] }}</span>{% endif %}
+            {% if deal["coupon_code"] %}<span class="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">🎟 Gutschein-Kandidat</span>{% endif %}
+          </div>
+          <h3 class="font-bold text-lg">{{ deal["title"] }}</h3>
+          <p class="text-sm text-slate-500">{{ deal["shop_name"] }}{% if deal["base_price"] > 0 %} · ab CHF {{ "%.2f"|format(deal["base_price"]) }}{% endif %}</p>
+          {% if deal["coupon_code"] %}<div class="mt-3 text-sm">Code: <strong>{{ deal["coupon_code"] }}</strong> <span class="text-amber-700">(vor Veröffentlichung prüfen)</span></div>{% endif %}
+          {% if deal["description"] %}<p class="text-sm text-slate-600 mt-3">{{ deal["description"] }}</p>{% endif %}
+          <div class="flex flex-wrap gap-4 mt-3 text-sm">
+            {% if deal["affiliate_link"] %}<a href="{{ deal["affiliate_link"] }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600">Affiliate-Link testen →</a>{% endif %}
+            {% if deal["source_url"] %}<a href="{{ deal["source_url"] }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600">Quelle öffnen →</a>{% endif %}
+          </div>
+        </div>
+        <div class="flex lg:flex-col gap-2 shrink-0">
+          <form action="/admin/deals/{{ deal["id"] }}/publish" method="post" onsubmit="return attachToken(this)"><input type="hidden" name="admin_token"><button class="bg-emerald-600 text-white px-4 py-2 rounded-lg">✓ Veröffentlichen</button></form>
+          <form action="/admin/deals/{{ deal["id"] }}/delete" method="post" onsubmit="return attachToken(this)"><input type="hidden" name="admin_token"><button class="bg-red-600 text-white px-4 py-2 rounded-lg">✕ Löschen</button></form>
+        </div>
+      </div>
+    </article>
+  {% else %}
+    <div class="bg-white border rounded-xl p-8 text-center text-slate-500">Noch keine Entwürfe vorhanden.</div>
+  {% endfor %}
+  </div>
 
-Automatisierung & Deal-Freigabe
-
-</p>
-
-
-<form
-action="/admin/sync"
-method="post"
-class="bg-white rounded-xl p-6 border mb-8"
->
-
-<label class="block text-sm font-semibold mb-2">
-
-Admin Token
-
-</label>
-
-<input
-type="password"
-name="admin_token"
-required
-class="w-full border rounded-lg px-3 py-2 mb-4"
-placeholder="ADMIN_TOKEN"
->
-
-
-<button
-class="bg-indigo-600 text-white px-5 py-3 rounded-lg font-semibold"
->
-
-🔄 Alle Quellen synchronisieren
-
-</button>
-
-</form>
-
-
-<h2 class="text-xl font-bold mb-4">
-
-Entwürfe zur Prüfung
-
-</h2>
-
-
-<div class="space-y-4">
-
-{% for deal in drafts %}
-
-<div class="bg-white border rounded-xl p-5">
-
-
-<div class="flex justify-between gap-4">
-
-
-<div>
-
-<div class="text-xs text-slate-400 mb-1">
-
-{{ deal["source"] }}
-
+  <section class="mt-10 bg-white rounded-xl border p-6">
+    <h2 class="text-lg font-bold mb-3">Letzte Import-Logs</h2>
+    <div class="space-y-2 text-sm">
+    {% for log in logs %}
+      <div class="flex flex-col md:flex-row md:justify-between gap-1 border-b pb-2">
+        <div><strong>{{ log["source"] }}</strong> · {{ log["status"] }} · {{ log["message"] or "" }}</div>
+        <div class="text-slate-400">{{ log["created_at"] }}</div>
+      </div>
+    {% else %}<div class="text-slate-500">Noch keine Logs.</div>{% endfor %}
+    </div>
+  </section>
 </div>
-
-
-<h3 class="font-bold text-lg">
-
-{{ deal["title"] }}
-
-</h3>
-
-
-<p class="text-sm text-slate-500">
-
-{{ deal["shop_name"] }}
-
-</p>
-
-
-{% if deal["coupon_code"] %}
-
-<p class="text-sm mt-2">
-
-Code:
-<strong>{{ deal["coupon_code"] }}</strong>
-
-</p>
-
-{% endif %}
-
-
-{% if deal["affiliate_link"] %}
-
-<a
-href="{{ deal["affiliate_link"] }}"
-target="_blank"
-class="text-sm text-indigo-600"
->
-
-Link testen →
-
-</a>
-
-{% endif %}
-
-
-</div>
-
-
-<div class="flex flex-col gap-2">
-
-
-<form
-action="/admin/deals/{{ deal["id"] }}/publish"
-method="post"
->
-
-<input
-type="hidden"
-name="admin_token"
-value=""
-class="admin-token-input"
->
-
-<button
-type="button"
-onclick="submitWithToken(this.form)"
-class="bg-emerald-600 text-white px-4 py-2 rounded-lg"
->
-
-✓ Veröffentlichen
-
-</button>
-
-</form>
-
-
-<form
-action="/admin/deals/{{ deal["id"] }}/delete"
-method="post"
->
-
-<input
-type="hidden"
-name="admin_token"
-value=""
-class="admin-token-input"
->
-
-<button
-type="button"
-onclick="submitWithToken(this.form)"
-class="bg-red-600 text-white px-4 py-2 rounded-lg"
->
-
-✕ Löschen
-
-</button>
-
-</form>
-
-
-</div>
-
-
-</div>
-
-</div>
-
-{% endfor %}
-
-</div>
-
-
-</div>
-
-
 <script>
-
-function submitWithToken(form) {
-
-    const token = prompt("Admin Token:");
-
-    if (!token) {
-        return;
-    }
-
-    form.querySelector(
-        'input[name="admin_token"]'
-    ).value = token;
-
-    form.submit();
+const tokenInput = document.getElementById('admin-token');
+const status = document.getElementById('token-status');
+tokenInput.value = localStorage.getItem('nettodeals_admin_token') || '';
+function refreshTokenStatus() {
+  if (tokenInput.value) {
+    status.textContent = '✓ Token im Browser bereit.';
+    status.className = 'text-xs mt-3 text-emerald-600';
+  } else {
+    status.textContent = 'Kein Token gespeichert.';
+    status.className = 'text-xs mt-3 text-slate-400';
+  }
 }
-
+tokenInput.addEventListener('input', () => {
+  if (tokenInput.value) localStorage.setItem('nettodeals_admin_token', tokenInput.value);
+  else localStorage.removeItem('nettodeals_admin_token');
+  refreshTokenStatus();
+});
+function attachToken(form) {
+  const token = tokenInput.value.trim();
+  if (!token) { alert('Bitte zuerst den Admin Token eingeben.'); tokenInput.focus(); return false; }
+  localStorage.setItem('nettodeals_admin_token', token);
+  form.querySelectorAll('input[name="admin_token"]').forEach(i => i.value = token);
+  return true;
+}
+refreshTokenStatus();
 </script>
-
-
 </body>
-
 </html>
 """
 
 
-@app.get(
-    "/admin",
-    response_class=HTMLResponse,
-)
-def admin_page():
-
+def load_admin_data() -> tuple[list[sqlite3.Row], dict, list[sqlite3.Row]]:
     with get_db() as conn:
-
         drafts = conn.execute(
             """
-            SELECT *
-            FROM deals
-
+            SELECT * FROM deals
             WHERE status = 'draft'
-
-            ORDER BY updated_at DESC
-
+            ORDER BY
+                CASE WHEN popularity_rank IS NULL THEN 1 ELSE 0 END,
+                popularity_rank ASC,
+                updated_at DESC
             LIMIT 500
             """
         ).fetchall()
 
-    template = Template(
-        ADMIN_TEMPLATE
-    )
+        stats = {
+            "drafts": conn.execute("SELECT COUNT(*) FROM deals WHERE status = 'draft'").fetchone()[0],
+            "published": conn.execute("SELECT COUNT(*) FROM deals WHERE status = 'published'").fetchone()[0],
+            "toppreise": conn.execute("SELECT COUNT(*) FROM deals WHERE source = 'toppreise'").fetchone()[0],
+            "toppreise_new": conn.execute("SELECT COUNT(*) FROM deals WHERE source = 'toppreise_new'").fetchone()[0],
+            "coupon_candidates": conn.execute(
+                "SELECT COUNT(*) FROM deals WHERE status = 'draft' AND coupon_code IS NOT NULL AND TRIM(coupon_code) <> ''"
+            ).fetchone()[0],
+        }
 
+        logs = conn.execute(
+            "SELECT * FROM import_logs ORDER BY id DESC LIMIT 30"
+        ).fetchall()
+
+    return drafts, stats, logs
+
+
+def render_admin(sync_result: Optional[dict] = None) -> HTMLResponse:
+    drafts, stats, logs = load_admin_data()
     return HTMLResponse(
-        template.render(
-            drafts=drafts
+        Template(ADMIN_TEMPLATE).render(
+            drafts=drafts,
+            stats=stats,
+            logs=logs,
+            sync_result=sync_result,
         )
     )
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page():
+    return render_admin()
 
 
 # ============================================================
 # SYNC
 # ============================================================
 
-@app.post("/admin/sync")
+@app.post("/admin/sync", response_class=HTMLResponse)
 def admin_sync(
     admin_token: str = Form(...),
 ):
-
-    verify_admin_token(
-        admin_token
-    )
-
+    verify_admin_token(admin_token)
     result = sync_all_sources()
-
-    return RedirectResponse(
-        url="/admin",
-        status_code=303,
-    )
+    return render_admin(sync_result=result)
 
 
 # ============================================================
@@ -1859,21 +2146,27 @@ def publish_deal(
     )
 
     with get_db() as conn:
+        deal = conn.execute(
+            "SELECT affiliate_link, source FROM deals WHERE id = ?",
+            (deal_id,),
+        ).fetchone()
+
+        if not deal:
+            raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
+
+        if not str(deal["affiliate_link"] or "").startswith(("http://", "https://")):
+            raise HTTPException(
+                status_code=400,
+                detail="Ein Deal benötigt vor der Veröffentlichung einen gültigen Affiliate-/Deal-Link."
+            )
 
         conn.execute(
             """
             UPDATE deals
-
-            SET
-                status = 'published',
-                updated_at = ?
-
+            SET status = 'published', updated_at = ?
             WHERE id = ?
             """,
-            (
-                now_iso(),
-                deal_id,
-            ),
+            (now_iso(), deal_id),
         )
 
     return RedirectResponse(
@@ -1927,7 +2220,7 @@ def create_manual_deal(
     coupon_discount: float = Form(0.0),
     payment_bonus: float = Form(0.0),
     shop_name: str = Form(...),
-    affiliate_link: str = Form(...),
+    affiliate_link: str = Form(""),
     coupon_code: str = Form(""),
     description: str = Form(""),
 ):
@@ -1956,7 +2249,7 @@ def create_manual_deal(
     )
 
     return RedirectResponse(
-        url="/",
+        url="/admin",
         status_code=303,
     )
 
@@ -1984,6 +2277,11 @@ def api_status():
         "tradedoubler_vouchers": bool(
             TRADEDOUBLER_VOUCHERS_TOKEN
         ),
+
+        "toppreise_enabled": TOPPREISE_ENABLED,
+        "toppreise_url": TOPPREISE_URL,
+        "toppreise_new_enabled": TOPPREISE_NEW_ENABLED,
+        "toppreise_new_url": TOPPREISE_NEW_URL,
 
         "database": DB_PATH,
 
