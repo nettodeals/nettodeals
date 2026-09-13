@@ -107,6 +107,43 @@ TOPPREISE_USER_AGENT = os.getenv(
     "Mozilla/5.0 (compatible; NettoDeals/2.2; +https://nettodeals.ch)"
 )
 
+# ------------------------------------------------------------
+# PARSE.BOT – strukturierte Toppreise-API
+# ------------------------------------------------------------
+# Die öffentliche Parse-API umgeht nicht die Toppreise-Zugriffssperre durch
+# Browser-Scraping, sondern liefert strukturierte Produkt-/Preis-Daten.
+# API-Key im RunOnFlux Environment als PARSE_API_KEY setzen.
+PARSE_API_KEY = os.getenv("PARSE_API_KEY", "")
+PARSE_TOPPREISE_API_BASE = os.getenv(
+    "PARSE_TOPPREISE_API_BASE",
+    "https://api.parse.bot/scraper/2ead1174-4b95-4c51-b9ff-1d8d3ea286da",
+).rstrip("/")
+TOPPREISE_PARSE_ENABLED = os.getenv("TOPPREISE_PARSE_ENABLED", "true").lower() in (
+    "1", "true", "yes", "on"
+)
+TOPPREISE_PARSE_MAX_PER_QUERY = int(os.getenv("TOPPREISE_PARSE_MAX_PER_QUERY", "5"))
+TOPPREISE_PARSE_MAX_PRODUCTS = int(os.getenv("TOPPREISE_PARSE_MAX_PRODUCTS", "40"))
+TOPPREISE_PARSE_HISTORY_MAX_PRODUCTS = int(
+    os.getenv("TOPPREISE_PARSE_HISTORY_MAX_PRODUCTS", "20")
+)
+# Keyword-Korb. Parse bietet derzeit keinen direkten Endpoint für
+# /topprodukte oder /neue-toppreise; deshalb wird die Suche über mehrere
+# repräsentative Produktmärkte ausgeführt. Die Liste ist per Environment
+# TOPPREISE_PARSE_QUERIES überschreibbar (Komma-separiert).
+TOPPREISE_PARSE_QUERIES = [
+    item.strip()
+    for item in os.getenv(
+        "TOPPREISE_PARSE_QUERIES",
+        "iPhone,Samsung Galaxy,Nintendo Switch,PlayStation,AirPods,MacBook,TV,Monitor,Staubsauger,Kaffeemaschine"
+    ).split(",")
+    if item.strip()
+]
+# Direkter HTML-Fallback nur bewusst aktivieren. Toppreise antwortet aus
+# Rechenzentrums-IPs häufig mit HTTP 403.
+TOPPREISE_DIRECT_FALLBACK = os.getenv("TOPPREISE_DIRECT_FALLBACK", "false").lower() in (
+    "1", "true", "yes", "on"
+)
+
 
 # ============================================================
 # FASTAPI
@@ -1186,11 +1223,11 @@ def import_tradedoubler_vouchers() -> int:
 
 
 # ============================================================
-# TOPPREISE – BELIEBTE PRODUKTE ALS NACHFRAGE-SIGNAL
+# TOPPREISE – TREND-/NACHFRAGE-SIGNALE
 # ============================================================
 
 class _ToppreiseTextParser(HTMLParser):
-    """Kleiner stdlib-Parser, damit keine zusätzliche Dependency nötig ist."""
+    """Kleiner stdlib-Parser für den optionalen HTML-Fallback."""
 
     def __init__(self):
         super().__init__()
@@ -1218,14 +1255,15 @@ def parse_chf_price(value: str) -> float:
     return safe_float(value)
 
 
-def scrape_toppreise_products(source_url: str = TOPPREISE_URL, max_products: int = TOPPREISE_MAX_PRODUCTS) -> list[dict]:
-    """Liest Toppreise als Popularitäts-/Trendquelle.
+def scrape_toppreise_products(
+    source_url: str = TOPPREISE_URL,
+    max_products: int = TOPPREISE_MAX_PRODUCTS,
+) -> list[dict]:
+    """Optionaler HTML-Fallback.
 
-    Der Parser ist bewusst tolerant, weil sich das Markup einer fremden Seite
-    ändern kann. Bei einer Änderung bleibt der Import als Fehler im Admin-Log
-    sichtbar statt die Anwendung zu stoppen.
+    Dieser Weg kann auf RunOnFlux mit HTTP 403 scheitern. Standardmässig wird
+    deshalb bei gesetztem PARSE_API_KEY die strukturierte Parse-API verwendet.
     """
-
     response = requests.get(
         source_url,
         headers={
@@ -1241,54 +1279,164 @@ def scrape_toppreise_products(source_url: str = TOPPREISE_URL, max_products: int
     parser.feed(response.text)
     text = parser.text
 
-    # Die Seite enthält Produktname gefolgt von "ab CHF ..." bzw.
-    # in der englischen Variante "from CHF ...".
     pattern = re.compile(
         r"(?P<title>[A-Za-z0-9ÄÖÜäöüÀ-ÿ][^\n]{2,260}?)\s+"
         r"(?:ab|from)\s+CHF\s*(?P<price>[0-9'’.,]+)",
         re.IGNORECASE,
     )
 
-    blocked = {
-        "toppreise", "top 100", "topbewertungen", "neue produkte", "neue toppreise",
-        "shops", "marken", "black friday", "verfügbarkeit",
-    }
     products: list[dict] = []
     seen: set[str] = set()
-
     for match in pattern.finditer(text):
         title = normalize_toppreise_title(match.group("title"))
-        price = parse_chf_price(match.group("price"))
         key = title.casefold()
-
-        if (
-            len(title) < 4
-            or key in seen
-            or any(title.casefold() == item for item in blocked)
-        ):
+        if len(title) < 4 or key in seen or title.count(" ") > 32:
             continue
-
-        # Navigationstexte oder offensichtlich lange Sammeltexte aussortieren.
-        if title.count(" ") > 32:
-            continue
-
         seen.add(key)
-        products.append(
-            {
-                "title": title,
-                "price": price,
-                "source_url": source_url,
-            }
-        )
-
+        products.append({
+            "title": title,
+            "price": parse_chf_price(match.group("price")),
+            "source_url": source_url,
+        })
         if len(products) >= max_products:
             break
 
     if not products:
         raise RuntimeError(
-            "Toppreise-Seite wurde geladen, aber keine Produkte konnten "
-            "aus dem aktuellen Seitenformat erkannt werden."
+            "Toppreise-Seite wurde geladen, aber keine Produkte konnten erkannt werden."
         )
+    return products
+
+
+# ------------------------------------------------------------
+# Parse.bot Toppreise API
+# ------------------------------------------------------------
+
+def _parse_api_get(endpoint: str, params: Optional[dict[str, Any]] = None) -> dict:
+    if not PARSE_API_KEY:
+        raise RuntimeError("PARSE_API_KEY fehlt. Bitte im Deployment als Environment Variable setzen.")
+
+    url = f"{PARSE_TOPPREISE_API_BASE}/{endpoint.lstrip('/')}"
+    response = requests.get(
+        url,
+        params=params or {},
+        headers={
+            "X-API-Key": PARSE_API_KEY,
+            "Accept": "application/json",
+            "User-Agent": "NettoDeals/2.4 (+https://nettodeals.ch)",
+        },
+        timeout=HTTP_TIMEOUT,
+    )
+    if response.status_code == 429:
+        raise RuntimeError("Parse API Rate Limit erreicht (HTTP 429). Später erneut synchronisieren.")
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        body = response.text[:500]
+        raise RuntimeError(f"Parse API {endpoint}: HTTP {response.status_code} – {body}") from exc
+
+    payload = response.json()
+    if isinstance(payload, dict) and payload.get("status") not in (None, "success"):
+        raise RuntimeError(f"Parse API {endpoint}: {payload}")
+    return payload if isinstance(payload, dict) else {"data": payload}
+
+
+def _parse_data(payload: dict) -> Any:
+    return payload.get("data", payload)
+
+
+def parse_toppreise_search(query: str, page: int = 0) -> list[dict]:
+    payload = _parse_api_get("search_products", {"page": page, "query": query})
+    data = _parse_data(payload)
+    if isinstance(data, dict):
+        products = data.get("products", [])
+    else:
+        products = []
+    return products if isinstance(products, list) else []
+
+
+def parse_toppreise_price_history(product_id: str) -> list[list]:
+    payload = _parse_api_get("get_price_history", {"product_id": product_id})
+    data = _parse_data(payload)
+    history = data.get("history", []) if isinstance(data, dict) else []
+    return history if isinstance(history, list) else []
+
+
+def _history_prices(history: list[list]) -> list[float]:
+    prices: list[float] = []
+    for series in history:
+        if not isinstance(series, list):
+            continue
+        for point in series:
+            if isinstance(point, (list, tuple)) and len(point) >= 2:
+                value = safe_float(point[1])
+                if value > 0:
+                    prices.append(value)
+    return prices
+
+
+def fetch_toppreise_parse_products(
+    mode: str = "popular",
+    max_products: int = TOPPREISE_PARSE_MAX_PRODUCTS,
+) -> list[dict]:
+    """Holt strukturierte Toppreise-Daten über Parse.
+
+    Hinweis: Die aktuell verfügbare Parse-API hat keinen direkten Endpoint für
+    die Toppreise-Seiten /topprodukte und /neue-toppreise. 'popular' nutzt
+    deshalb einen konfigurierbaren Keyword-Korb. 'new_low' prüft zusätzlich die
+    Preis-Historie und behält Produkte, deren aktueller Startpreis nahe am
+    historischen Minimum liegt.
+    """
+    if not TOPPREISE_PARSE_ENABLED:
+        raise RuntimeError("TOPPREISE_PARSE_ENABLED ist deaktiviert.")
+
+    products: list[dict] = []
+    seen: set[str] = set()
+    per_query = max(1, TOPPREISE_PARSE_MAX_PER_QUERY)
+    history_checked = 0
+
+    for query in TOPPREISE_PARSE_QUERIES:
+        for item in parse_toppreise_search(query=query, page=0)[:per_query]:
+            if not isinstance(item, dict):
+                continue
+            title = normalize_toppreise_title(str(item.get("name") or item.get("title") or ""))
+            product_id = str(item.get("product_id") or "").strip()
+            price = safe_float(item.get("price_starting"))
+            url = str(item.get("url") or "").strip()
+            key = product_id or title.casefold()
+            if not title or key in seen:
+                continue
+            seen.add(key)
+
+            product = {
+                "title": title,
+                "price": price,
+                "product_id": product_id,
+                "source_url": url or "https://www.toppreise.ch/",
+                "query": query,
+            }
+
+            if mode == "new_low":
+                if not product_id:
+                    continue
+                if history_checked >= TOPPREISE_PARSE_HISTORY_MAX_PRODUCTS:
+                    break
+                history_checked += 1
+                history = parse_toppreise_price_history(product_id)
+                historical = _history_prices(history)
+                if not historical or price <= 0:
+                    continue
+                historical_min = min(historical)
+                # Kandidat, wenn aktueller Startpreis maximal 2 % über dem
+                # historischen Minimum liegt.
+                if price > historical_min * 1.02:
+                    continue
+                product["historical_min"] = historical_min
+                product["trend_signal"] = "near_historical_low"
+
+            products.append(product)
+            if len(products) >= max_products:
+                return products
 
     return products
 
@@ -1304,114 +1452,76 @@ def _meaningful_tokens(value: str) -> set[str]:
 
 
 def find_coupon_matches(product_title: str, limit: int = 3) -> list[dict]:
-    """Sucht bereits importierte Gutscheine, die semantisch zum Produkt passen.
-
-    Ohne Händlerzuordnung darf ein Gutschein nicht als garantiert gültig
-    dargestellt werden. Deshalb werden Treffer nur als "zu prüfen" markiert.
-    """
-
     product_tokens = _meaningful_tokens(product_title)
     if not product_tokens:
         return []
-
     with get_db() as conn:
         rows = conn.execute(
             """
             SELECT id, title, shop_name, coupon_code, description, source
             FROM deals
-            WHERE coupon_code IS NOT NULL
-              AND TRIM(coupon_code) <> ''
-            ORDER BY updated_at DESC
-            LIMIT 2000
+            WHERE coupon_code IS NOT NULL AND TRIM(coupon_code) <> ''
+            ORDER BY updated_at DESC LIMIT 2000
             """
         ).fetchall()
-
     matches: list[tuple[int, dict]] = []
-
     for row in rows:
-        haystack = " ".join(
-            str(row[key] or "")
-            for key in ("title", "shop_name", "description")
-        )
-        overlap = product_tokens & _meaningful_tokens(haystack)
-        score = len(overlap)
-
-        # Ein einzelnes Markenwort ist oft zu unsicher.
+        haystack = " ".join(str(row[key] or "") for key in ("title", "shop_name", "description"))
+        score = len(product_tokens & _meaningful_tokens(haystack))
         if score >= 2:
             matches.append((score, dict(row)))
-
     matches.sort(key=lambda item: item[0], reverse=True)
     return [row for _, row in matches[:limit]]
 
 
-def import_toppreise_products(
-    source: str = "toppreise",
-    source_url: str = TOPPREISE_URL,
-    max_products: int = TOPPREISE_MAX_PRODUCTS,
-    trend_label: str = "Toppreise Popularitätsrang",
+def import_toppreise_product_list(
+    products: list[dict],
+    source: str,
+    trend_label: str,
+    source_url: str,
 ) -> int:
-    products = scrape_toppreise_products(source_url, max_products)
     imported = 0
-
     for rank, product in enumerate(products, start=1):
-        title = product["title"]
+        title = str(product.get("title") or "").strip()
+        if not title:
+            continue
         price = safe_float(product.get("price"))
         matches = find_coupon_matches(title)
+        coupon_code = str(matches[0].get("coupon_code") or "") if matches else ""
 
-        coupon_code = ""
         description_parts = [
             f"{trend_label}: #{rank}. ",
-            "Produkt wurde als stark nachgefragt erkannt.",
+            "Toppreise-Daten dienen als Nachfrage-/Preissignal und werden nie automatisch veröffentlicht.",
         ]
-
-        if matches:
-            # Nur den besten Kandidaten anzeigen; der Deal bleibt Draft,
-            # damit der Admin die tatsächliche Gutschein-Gültigkeit prüft.
-            best = matches[0]
-            coupon_code = str(best.get("coupon_code") or "")
+        if product.get("query"):
+            description_parts.append(f" Suchsignal: {product['query']}.")
+        if product.get("historical_min"):
             description_parts.append(
-                f" Gutschein-Kandidat gefunden bei {best.get('shop_name') or 'unbekanntem Shop'} "
-                f"(Quelle: {best.get('source')}). Bitte vor Veröffentlichung prüfen."
+                f" Aktueller Startpreis CHF {price:.2f}; historisches Minimum CHF {safe_float(product['historical_min']):.2f}."
+            )
+        if matches:
+            description_parts.append(
+                f" Gutschein-Kandidat bei {matches[0].get('shop_name') or 'unbekanntem Shop'} – vor Veröffentlichung prüfen."
             )
         else:
-            description_parts.append(
-                " Kein passender Rabattcode in den aktuell importierten Gutscheinquellen gefunden."
-            )
+            description_parts.append(" Kein passender Rabattcode in den lokalen Gutscheinquellen gefunden.")
 
-        source_id = make_source_id(source, title)
+        source_id = make_source_id(source, str(product.get("product_id") or title))
         timestamp = now_iso()
-
         with get_db() as conn:
             existing = conn.execute(
-                """
-                SELECT id FROM deals
-                WHERE source = ? AND source_id = ?
-                """,
+                "SELECT id FROM deals WHERE source = ? AND source_id = ?",
                 (source, source_id),
             ).fetchone()
-
             values = (
-                title,
-                "Topprodukt",
-                price,
-                0.0,
-                0.0,
-                price,
-                "Toppreise.ch",
-                "",
-                coupon_code,
-                "".join(description_parts),
-                rank,
-                product.get("source_url") or source_url,
-                timestamp,
-                timestamp,
+                title, "Topprodukt", price, 0.0, 0.0, price,
+                "Toppreise.ch", "", coupon_code, "".join(description_parts),
+                rank, str(product.get("source_url") or source_url), timestamp, timestamp,
             )
-
             if existing:
                 conn.execute(
                     """
-                    UPDATE deals
-                    SET title = ?, category = ?, base_price = ?,
+                    UPDATE deals SET title = ?, category = ?, base_price = ?,
                         coupon_discount = ?, payment_bonus = ?, effective_price = ?,
                         shop_name = ?, affiliate_link = ?, coupon_code = ?,
                         description = ?, popularity_rank = ?, source_url = ?,
@@ -1424,27 +1534,46 @@ def import_toppreise_products(
                 conn.execute(
                     """
                     INSERT INTO deals (
-                        title, category, base_price, coupon_discount,
-                        payment_bonus, effective_price, shop_name,
-                        affiliate_link, coupon_code, description,
-                        source, source_id, status, created_at, updated_at,
+                        title, category, base_price, coupon_discount, payment_bonus,
+                        effective_price, shop_name, affiliate_link, coupon_code,
+                        description, source, source_id, status, created_at, updated_at,
                         popularity_rank, source_url, last_checked_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
                     """,
                     (
                         title, "Topprodukt", price, 0.0, 0.0, price,
-                        "Toppreise.ch", "", coupon_code,
-                        "".join(description_parts), source, source_id,
-                        timestamp, timestamp, rank,
-                        product.get("source_url") or source_url,
-                        timestamp,
+                        "Toppreise.ch", "", coupon_code, "".join(description_parts),
+                        source, source_id, timestamp, timestamp, rank,
+                        str(product.get("source_url") or source_url), timestamp,
                     ),
                 )
                 imported += 1
-
     return imported
 
+
+def import_toppreise_parse_products(mode: str = "popular") -> int:
+    products = fetch_toppreise_parse_products(
+        mode=mode,
+        max_products=(TOPPREISE_NEW_MAX_PRODUCTS if mode == "new_low" else TOPPREISE_PARSE_MAX_PRODUCTS),
+    )
+    label = (
+        "Toppreise API – nahe historischem Tiefpreis"
+        if mode == "new_low"
+        else "Toppreise API – Produktnachfrage-Signal"
+    )
+    source = "toppreise_parse_new" if mode == "new_low" else "toppreise_parse"
+    source_url = TOPPREISE_NEW_URL if mode == "new_low" else TOPPREISE_URL
+    return import_toppreise_product_list(products, source, label, source_url)
+
+
+def import_toppreise_products(
+    source: str = "toppreise",
+    source_url: str = TOPPREISE_URL,
+    max_products: int = TOPPREISE_MAX_PRODUCTS,
+    trend_label: str = "Toppreise Popularitätsrang",
+) -> int:
+    products = scrape_toppreise_products(source_url, max_products)
+    return import_toppreise_product_list(products, source, trend_label, source_url)
 
 
 # ============================================================
@@ -1624,22 +1753,34 @@ def sync_all_sources() -> dict:
         "tradedoubler_vouchers", "TradeDoubler Gutscheine", bool(TRADEDOUBLER_VOUCHERS_TOKEN), import_tradedoubler_vouchers
     )
 
-    # Wichtig: beide Toppreise-Quellen laufen unabhängig voneinander.
+    # Bei gesetztem PARSE_API_KEY wird die strukturierte API verwendet.
+    # Ohne Key ist der direkte HTML-Fallback nur aktiv, wenn er explizit
+    # über TOPPREISE_DIRECT_FALLBACK=true freigegeben wurde.
+    use_parse = bool(PARSE_API_KEY and TOPPREISE_PARSE_ENABLED)
+
     run_source(
-        "toppreise", "Toppreise Topprodukte", TOPPREISE_ENABLED,
-        lambda: import_toppreise_products(
+        "toppreise", "Toppreise Trendprodukte", TOPPREISE_ENABLED,
+        (lambda: import_toppreise_parse_products("popular")) if use_parse else
+        (lambda: import_toppreise_products(
             source="toppreise", source_url=TOPPREISE_URL,
             max_products=TOPPREISE_MAX_PRODUCTS,
             trend_label="Toppreise Popularitätsrang",
-        ),
+        )) if TOPPREISE_DIRECT_FALLBACK else
+        (lambda: (_ for _ in ()).throw(RuntimeError(
+            "PARSE_API_KEY fehlt und der direkte Toppreise-Fallback ist deaktiviert."
+        ))),
     )
     run_source(
-        "toppreise_new", "Toppreise Neue Toppreise", TOPPREISE_NEW_ENABLED,
-        lambda: import_toppreise_products(
+        "toppreise_new", "Toppreise Preis-Trends", TOPPREISE_NEW_ENABLED,
+        (lambda: import_toppreise_parse_products("new_low")) if use_parse else
+        (lambda: import_toppreise_products(
             source="toppreise_new", source_url=TOPPREISE_NEW_URL,
             max_products=TOPPREISE_NEW_MAX_PRODUCTS,
             trend_label="Toppreise Neue-Toppreise-Rang",
-        ),
+        )) if TOPPREISE_DIRECT_FALLBACK else
+        (lambda: (_ for _ in ()).throw(RuntimeError(
+            "PARSE_API_KEY fehlt und der direkte Toppreise-Fallback ist deaktiviert."
+        ))),
     )
 
     # Matching nur nach erfolgreichen Importen vorhandener Affiliate-Daten.
@@ -2354,6 +2495,10 @@ def api_status():
         "toppreise_new_enabled": TOPPREISE_NEW_ENABLED,
         "toppreise_new_url": TOPPREISE_NEW_URL,
         "toppreise_user_agent_configured": bool(TOPPREISE_USER_AGENT),
+        "parse_toppreise_enabled": TOPPREISE_PARSE_ENABLED,
+        "parse_toppreise_configured": bool(PARSE_API_KEY),
+        "parse_toppreise_base": PARSE_TOPPREISE_API_BASE,
+        "parse_toppreise_queries": TOPPREISE_PARSE_QUERIES,
 
         "database": DB_PATH,
 
