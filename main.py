@@ -8,6 +8,7 @@ import hashlib
 import os
 import sqlite3
 import re
+from difflib import SequenceMatcher
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -103,7 +104,7 @@ TOPPREISE_NEW_MAX_PRODUCTS = int(
 )
 TOPPREISE_USER_AGENT = os.getenv(
     "TOPPREISE_USER_AGENT",
-    "NettoDeals/2.1 (+https://nettodeals.ch)"
+    "Mozilla/5.0 (compatible; NettoDeals/2.2; +https://nettodeals.ch)"
 )
 
 
@@ -1229,6 +1230,7 @@ def scrape_toppreise_products(source_url: str = TOPPREISE_URL, max_products: int
         source_url,
         headers={
             "User-Agent": TOPPREISE_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "de-CH,de;q=0.9,en;q=0.7",
         },
         timeout=HTTP_TIMEOUT,
@@ -1444,155 +1446,211 @@ def import_toppreise_products(
     return imported
 
 
+
+# ============================================================
+# TREND → AFFILIATE-MATCHING
+# ============================================================
+
+def title_match_score(a: str, b: str) -> float:
+    """Bewertet, ob ein Trendprodukt zu einem Affiliate-Produkt passt."""
+    a_tokens = _meaningful_tokens(a)
+    b_tokens = _meaningful_tokens(b)
+    if not a_tokens or not b_tokens:
+        return 0.0
+
+    overlap = len(a_tokens & b_tokens)
+    union = len(a_tokens | b_tokens)
+    jaccard = overlap / union if union else 0.0
+    sequence = SequenceMatcher(None, (a or '').casefold(), (b or '').casefold()).ratio()
+
+    # Exakte Modell-/Markenüberschneidungen sind wichtiger als reine Zeichenähnlichkeit.
+    return (overlap * 10.0) + (jaccard * 10.0) + sequence
+
+
+def find_affiliate_match(product_title: str) -> Optional[dict]:
+    """Findet unter bereits importierten Affiliate-Angeboten den besten Kandidaten.
+
+    Es wird ausschliesslich auf lokal vorhandene Daten gematcht. Damit werden
+    keine fremden Suchseiten automatisiert abgefragt.
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM deals
+            WHERE source IN ('awin', 'tradedoubler_product')
+              AND affiliate_link LIKE 'http%'
+            ORDER BY updated_at DESC
+            LIMIT 5000
+            """
+        ).fetchall()
+
+    best = None
+    best_score = 0.0
+    for row in rows:
+        score = title_match_score(product_title, str(row['title'] or ''))
+        if score > best_score:
+            best_score = score
+            best = dict(row)
+
+    # Mindestens zwei sinnvolle gemeinsame Tokens oder ein sehr ähnlicher Titel.
+    if best and best_score >= 13.0:
+        best['_match_score'] = round(best_score, 2)
+        return best
+    return None
+
+
+def find_coupon_for_shop(shop_name: str) -> Optional[dict]:
+    shop_tokens = _meaningful_tokens(shop_name)
+    if not shop_tokens:
+        return None
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, title, shop_name, coupon_code, description, source
+            FROM deals
+            WHERE coupon_code IS NOT NULL AND TRIM(coupon_code) <> ''
+            ORDER BY updated_at DESC
+            LIMIT 3000
+            """
+        ).fetchall()
+    best = None
+    best_score = 0
+    for row in rows:
+        score = len(shop_tokens & _meaningful_tokens(str(row['shop_name'] or '')))
+        if score > best_score:
+            best_score = score
+            best = dict(row)
+    return best if best_score >= 1 else None
+
+
+def enrich_trend_products_with_affiliates() -> int:
+    """Verbindet Trend-Signale mit lokal importierten Affiliate-Produkten.
+
+    Ein Treffer bleibt immer Entwurf und wird nie automatisch veröffentlicht.
+    """
+    changed = 0
+    with get_db() as conn:
+        trends = conn.execute(
+            """
+            SELECT * FROM deals
+            WHERE source IN ('toppreise', 'toppreise_new')
+              AND status = 'draft'
+            ORDER BY updated_at DESC
+            LIMIT 500
+            """
+        ).fetchall()
+
+    for trend in trends:
+        match = find_affiliate_match(str(trend['title']))
+        if not match:
+            continue
+        coupon = find_coupon_for_shop(str(match.get('shop_name') or ''))
+        coupon_code = str(coupon.get('coupon_code') or '') if coupon else str(trend['coupon_code'] or '')
+        price = safe_float(match.get('base_price')) or safe_float(trend['base_price'])
+        description = (
+            f"Trend-Signal aus Toppreise. Affiliate-Produkt lokal gematcht "
+            f"(Score {match['_match_score']}) bei {match.get('shop_name')}. "
+            "Vor Veröffentlichung Preis, Verfügbarkeit und Gutschein prüfen."
+        )
+        if coupon:
+            description += f" Gutschein-Kandidat: {coupon_code} (Quelle: {coupon.get('source')})."
+
+        with get_db() as conn:
+            conn.execute(
+                """
+                UPDATE deals
+                SET category = ?, base_price = ?, effective_price = ?, shop_name = ?,
+                    affiliate_link = ?, coupon_code = ?, description = ?,
+                    last_checked_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    'Trend-Deal Kandidat', price, price,
+                    str(match.get('shop_name') or trend['shop_name']),
+                    str(match.get('affiliate_link') or ''), coupon_code,
+                    description, now_iso(), now_iso(), trend['id'],
+                ),
+            )
+        changed += 1
+    return changed
+
+
+def configured_status(configured: bool) -> str:
+    return 'configured' if configured else 'not_configured'
+
 # ============================================================
 # ALLE QUELLEN SYNCHRONISIEREN
 # ============================================================
 
 def sync_all_sources() -> dict:
-
     result = {
         "awin": 0,
         "tradedoubler_products": 0,
         "tradedoubler_vouchers": 0,
         "toppreise": 0,
         "toppreise_new": 0,
+        "trend_affiliate_matches": 0,
         "errors": [],
+        "sources": {
+            "awin": {"status": configured_status(bool(AWIN_PUBLISHER_ID and AWIN_API_TOKEN)), "message": ""},
+            "tradedoubler_products": {"status": configured_status(bool(TRADEDOUBLER_PRODUCTS_TOKEN)), "message": ""},
+            "tradedoubler_vouchers": {"status": configured_status(bool(TRADEDOUBLER_VOUCHERS_TOKEN)), "message": ""},
+            "toppreise": {"status": "disabled" if not TOPPREISE_ENABLED else "pending", "message": ""},
+            "toppreise_new": {"status": "disabled" if not TOPPREISE_NEW_ENABLED else "pending", "message": ""},
+        },
     }
 
-    # AWIN
+    def run_source(key: str, label: str, enabled: bool, func):
+        if not enabled:
+            return
+        try:
+            count = func()
+            result[key] = count
+            result["sources"][key] = {"status": "success", "message": f"{count} verarbeitet"}
+            log_import(key, "success", f"{label} erfolgreich verarbeitet.", count)
+        except Exception as exc:
+            message = str(exc)
+            result["errors"].append(f"{label}: {message}")
+            result["sources"][key] = {"status": "error", "message": message}
+            log_import(key, "error", message)
 
+    run_source(
+        "awin", "AWIN", bool(AWIN_PUBLISHER_ID and AWIN_API_TOKEN), import_awin_offers
+    )
+    run_source(
+        "tradedoubler_products", "TradeDoubler Produkte", bool(TRADEDOUBLER_PRODUCTS_TOKEN), import_tradedoubler_products
+    )
+    run_source(
+        "tradedoubler_vouchers", "TradeDoubler Gutscheine", bool(TRADEDOUBLER_VOUCHERS_TOKEN), import_tradedoubler_vouchers
+    )
+
+    # Wichtig: beide Toppreise-Quellen laufen unabhängig voneinander.
+    run_source(
+        "toppreise", "Toppreise Topprodukte", TOPPREISE_ENABLED,
+        lambda: import_toppreise_products(
+            source="toppreise", source_url=TOPPREISE_URL,
+            max_products=TOPPREISE_MAX_PRODUCTS,
+            trend_label="Toppreise Popularitätsrang",
+        ),
+    )
+    run_source(
+        "toppreise_new", "Toppreise Neue Toppreise", TOPPREISE_NEW_ENABLED,
+        lambda: import_toppreise_products(
+            source="toppreise_new", source_url=TOPPREISE_NEW_URL,
+            max_products=TOPPREISE_NEW_MAX_PRODUCTS,
+            trend_label="Toppreise Neue-Toppreise-Rang",
+        ),
+    )
+
+    # Matching nur nach erfolgreichen Importen vorhandener Affiliate-Daten.
     try:
-
-        if (
-            AWIN_PUBLISHER_ID
-            and AWIN_API_TOKEN
-        ):
-
-            result["awin"] = (
-                import_awin_offers()
-            )
-
-            log_import(
-                "awin",
-                "success",
-                "AWIN Import erfolgreich.",
-                result["awin"],
-            )
-
+        result["trend_affiliate_matches"] = enrich_trend_products_with_affiliates()
+        log_import("trend_affiliate_matching", "success", "Trendprodukte mit lokalen Affiliate-Angeboten abgeglichen.", result["trend_affiliate_matches"])
     except Exception as exc:
-
-        result["errors"].append(
-            f"AWIN: {exc}"
-        )
-
-        log_import(
-            "awin",
-            "error",
-            str(exc),
-        )
-
-    # TRADEDOUBLER PRODUCTS
-
-    try:
-
-        if TRADEDOUBLER_PRODUCTS_TOKEN:
-
-            result[
-                "tradedoubler_products"
-            ] = (
-                import_tradedoubler_products()
-            )
-
-            log_import(
-                "tradedoubler_products",
-                "success",
-                "TradeDoubler Products Import erfolgreich.",
-                result[
-                    "tradedoubler_products"
-                ],
-            )
-
-    except Exception as exc:
-
-        result["errors"].append(
-            f"TradeDoubler Products: {exc}"
-        )
-
-        log_import(
-            "tradedoubler_products",
-            "error",
-            str(exc),
-        )
-
-    # TRADEDOUBLER VOUCHERS
-
-    try:
-
-        if TRADEDOUBLER_VOUCHERS_TOKEN:
-
-            result[
-                "tradedoubler_vouchers"
-            ] = (
-                import_tradedoubler_vouchers()
-            )
-
-            log_import(
-                "tradedoubler_vouchers",
-                "success",
-                "TradeDoubler Vouchers Import erfolgreich.",
-                result[
-                    "tradedoubler_vouchers"
-                ],
-            )
-
-    except Exception as exc:
-
-        result["errors"].append(
-            f"TradeDoubler Vouchers: {exc}"
-        )
-
-        log_import(
-            "tradedoubler_vouchers",
-            "error",
-            str(exc),
-        )
-
-    # TOPPREISE – erst NACH Gutscheinquellen, damit neue Gutscheine
-    # sofort beim Abgleich berücksichtigt werden.
-    try:
-        if TOPPREISE_ENABLED:
-            result["toppreise"] = import_toppreise_products(
-                source="toppreise",
-                source_url=TOPPREISE_URL,
-                max_products=TOPPREISE_MAX_PRODUCTS,
-                trend_label="Toppreise Popularitätsrang",
-            )
-            log_import(
-                "toppreise",
-                "success",
-                "Toppreise Topprodukte importiert und auf Gutschein-Kandidaten geprüft.",
-                result["toppreise"],
-            )
-
-        if TOPPREISE_NEW_ENABLED:
-            result["toppreise_new"] = import_toppreise_products(
-                source="toppreise_new",
-                source_url=TOPPREISE_NEW_URL,
-                max_products=TOPPREISE_NEW_MAX_PRODUCTS,
-                trend_label="Toppreise Neue-Toppreise-Rang",
-            )
-            log_import(
-                "toppreise_new",
-                "success",
-                "Toppreise Neue Toppreise importiert und auf Gutschein-Kandidaten geprüft.",
-                result["toppreise_new"],
-            )
-    except Exception as exc:
-        result["errors"].append(f"Toppreise: {exc}")
-        log_import("toppreise", "error", str(exc))
+        result["errors"].append(f"Trend/Affiliate-Matching: {exc}")
+        log_import("trend_affiliate_matching", "error", str(exc))
 
     return result
-
 
 # ============================================================
 # HEALTH CHECK
@@ -1625,6 +1683,7 @@ def health_check():
                         TRADEDOUBLER_VOUCHERS_TOKEN
                     ),
                 "toppreise_enabled": TOPPREISE_ENABLED,
+                "toppreise_new_enabled": TOPPREISE_NEW_ENABLED,
             }
         )
 
@@ -1940,6 +1999,14 @@ ADMIN_TEMPLATE = """
       <div>TradeDoubler Gutscheine: <strong>{{ sync_result["tradedoubler_vouchers"] }}</strong></div>
       <div>Toppreise Topprodukte: <strong>{{ sync_result["toppreise"] }}</strong></div>
       <div>Toppreise Neue Toppreise: <strong>{{ sync_result["toppreise_new"] }}</strong></div>
+      <div>Trend → Affiliate Matches: <strong>{{ sync_result["trend_affiliate_matches"] }}</strong></div>
+    </div>
+    <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+      {% for name, info in sync_result["sources"].items() %}
+      <div class="border rounded-lg px-3 py-2 bg-white">
+        <strong>{{ name }}</strong> · {{ info["status"] }}{% if info["message"] %} · {{ info["message"] }}{% endif %}
+      </div>
+      {% endfor %}
     </div>
     {% if sync_result["errors"] %}
       <div class="mt-3 text-sm text-red-700">
@@ -1964,12 +2031,13 @@ ADMIN_TEMPLATE = """
     <div id="token-status" class="text-xs mt-3"></div>
   </section>
 
-  <section class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+  <section class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-8">
     <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Entwürfe</div><div class="text-2xl font-black">{{ stats.drafts }}</div></div>
     <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Veröffentlicht</div><div class="text-2xl font-black">{{ stats.published }}</div></div>
     <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Toppreise Topprodukte</div><div class="text-2xl font-black">{{ stats.toppreise }}</div></div>
     <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Neue Toppreise</div><div class="text-2xl font-black">{{ stats.toppreise_new }}</div></div>
     <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Gutschein-Kandidaten</div><div class="text-2xl font-black">{{ stats.coupon_candidates }}</div></div>
+    <div class="bg-white rounded-xl border p-4"><div class="text-xs text-slate-500">Affiliate-Matches</div><div class="text-2xl font-black">{{ stats.affiliate_matches }}</div></div>
   </section>
 
   <section class="bg-white rounded-xl border p-6 mb-8">
@@ -2089,6 +2157,9 @@ def load_admin_data() -> tuple[list[sqlite3.Row], dict, list[sqlite3.Row]]:
             "toppreise_new": conn.execute("SELECT COUNT(*) FROM deals WHERE source = 'toppreise_new'").fetchone()[0],
             "coupon_candidates": conn.execute(
                 "SELECT COUNT(*) FROM deals WHERE status = 'draft' AND coupon_code IS NOT NULL AND TRIM(coupon_code) <> ''"
+            ).fetchone()[0],
+            "affiliate_matches": conn.execute(
+                "SELECT COUNT(*) FROM deals WHERE source IN ('toppreise', 'toppreise_new') AND affiliate_link LIKE 'http%'"
             ).fetchone()[0],
         }
 
@@ -2282,6 +2353,7 @@ def api_status():
         "toppreise_url": TOPPREISE_URL,
         "toppreise_new_enabled": TOPPREISE_NEW_ENABLED,
         "toppreise_new_url": TOPPREISE_NEW_URL,
+        "toppreise_user_agent_configured": bool(TOPPREISE_USER_AGENT),
 
         "database": DB_PATH,
 
