@@ -9,6 +9,7 @@ from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from jinja2 import Template
 
+app = FastAPI()
 
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 DB_PATH = os.getenv("DB_PATH", "/data/nettodeals.db")
