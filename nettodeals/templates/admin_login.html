@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin-Anmeldung · NettoDeals</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="admin-body">
+  <main class="login-shell">
+    <section class="login-card">
+      <a class="brand" href="/"><span class="brand-glow" aria-hidden="true"></span><span>Netto<span>Deals</span></span><small>CH</small></a>
+      <p class="eyebrow"><span></span> Geschützter Bereich</p>
+      <h1>Admin-Anmeldung</h1>
+      <p>Der Token wird einmalig geprüft und nicht im Browser gespeichert.</p>
+      {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+      {% if not configured %}<div class="notice error" role="alert">ADMIN_TOKEN ist auf dem Server nicht konfiguriert.</div>{% endif %}
+      <form action="/admin/login" method="post" class="stack-form">
+        <label for="admin-token">Admin-Token</label>
+        <input id="admin-token" name="admin_token" type="password" required autocomplete="current-password" {% if not configured %}disabled{% endif %}>
+        <button class="primary-button" type="submit" {% if not configured %}disabled{% endif %}>Sicher anmelden</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
+

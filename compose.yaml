@@ -1,0 +1,21 @@
+services:
+  nettodeals:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DB_PATH: /data/nettodeals.db
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN is required}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      AWIN_PUBLISHER_ID: ${AWIN_PUBLISHER_ID:-}
+      AWIN_API_TOKEN: ${AWIN_API_TOKEN:-}
+      TRADEDOUBLER_PRODUCTS_TOKEN: ${TRADEDOUBLER_PRODUCTS_TOKEN:-}
+      TRADEDOUBLER_VOUCHERS_TOKEN: ${TRADEDOUBLER_VOUCHERS_TOKEN:-}
+    volumes:
+      - nettodeals-data:/data
+
+volumes:
+  nettodeals-data:
+

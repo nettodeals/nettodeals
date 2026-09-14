@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · NettoDeals</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="admin-body">
+  <header class="admin-header">
+    <a class="brand" href="/"><span class="brand-glow" aria-hidden="true"></span><span>Netto<span>Deals</span></span><small>CH</small></a>
+    <form action="/admin/logout" method="post">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="text-button" type="submit">Abmelden</button>
+    </form>
+  </header>
+
+  <main class="admin-main">
+    <div class="admin-title">
+      <div><span class="section-kicker">Kontrollzentrum</span><h1>Deals prüfen &amp; pflegen</h1></div>
+      <form action="/admin/sync" method="post">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <button class="primary-button" type="submit">Quellen synchronisieren</button>
+      </form>
+    </div>
+
+    <div class="admin-stats">
+      <div><strong>{{ counts.get('published', 0) }}</strong><span>Veröffentlicht</span></div>
+      <div><strong>{{ counts.get('draft', 0) }}</strong><span>Zu prüfen</span></div>
+      <div><strong>{{ counts.get('archived', 0) }}</strong><span>Archiviert</span></div>
+      <div><strong>{{ sources.values()|select|list|length }}</strong><span>Aktive Quellen</span></div>
+    </div>
+
+    {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+    {% if result %}<div class="notice success" role="status">Synchronisierung beendet: {{ result.sources|length }} Quellen verarbeitet.</div>{% endif %}
+
+    <details class="admin-panel" open>
+      <summary>Manuellen Deal erfassen</summary>
+      <form action="/admin/deals/create" method="post" class="deal-form">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <label>Titel<input name="title" maxlength="300" required></label>
+        <label>Shop<input name="shop_name" maxlength="120" required></label>
+        <label class="wide">HTTPS-Affiliate-Link<input name="affiliate_link" type="url" maxlength="2048" required></label>
+        <label>Kategorie<input name="category" value="Deals" maxlength="80"></label>
+        <label>Basispreis<input name="base_price" type="number" min="0" max="10000000" step="0.01" value="0"></label>
+        <label>Gutscheinabzug<input name="coupon_discount" type="number" min="0" max="10000000" step="0.01" value="0"></label>
+        <label>Zahlungsbonus<input name="payment_bonus" type="number" min="0" max="10000000" step="0.01" value="0"></label>
+        <label>Gutscheincode<input name="coupon_code" maxlength="120"></label>
+        <label class="wide">Beschreibung<textarea name="description" maxlength="2000" rows="3"></textarea></label>
+        <button class="primary-button" type="submit">Deal veröffentlichen</button>
+      </form>
+    </details>
+
+    <section class="admin-panel">
+      <div class="panel-heading"><div><span class="section-kicker">Moderation</span><h2>Entwürfe</h2></div><b>{{ drafts|length }}</b></div>
+      {% if drafts %}
+      <div class="draft-list">
+        {% for deal in drafts %}
+        <article class="draft-card">
+          <div>
+            <span class="source-label">{{ deal.source }}</span>
+            <h3>{{ deal.title }}</h3>
+            <p>{{ deal.shop_name }}{% if deal.base_price > 0 %} · CHF {{ "%.2f"|format(deal.effective_price) }}{% endif %}</p>
+            {% if deal.affiliate_link %}<a href="{{ deal.affiliate_link }}" rel="noopener noreferrer nofollow" target="_blank">Link sicher prüfen ↗</a>{% else %}<span class="missing-link">Kein gültiger Link</span>{% endif %}
+          </div>
+          <div class="draft-actions">
+            <form action="/admin/deals/{{ deal.id }}/publish" method="post">
+              <input type="hidden" name="csrf" value="{{ csrf_token }}">
+              <button class="approve-button" type="submit" {% if not deal.affiliate_link %}disabled{% endif %}>Veröffentlichen</button>
+            </form>
+            <form action="/admin/deals/{{ deal.id }}/delete" method="post">
+              <input type="hidden" name="csrf" value="{{ csrf_token }}">
+              <button class="danger-button" type="submit">Löschen</button>
+            </form>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}<p class="panel-empty">Keine offenen Entwürfe.</p>{% endif %}
+    </section>
+
+    <section class="admin-panel">
+      <div class="panel-heading"><div><span class="section-kicker">Betrieb</span><h2>Letzte Importe</h2></div></div>
+      <div class="log-list">
+        {% for log in logs %}
+        <div><span class="log-status {{ log.status }}">{{ log.status }}</span><strong>{{ log.source }}</strong><p>{{ log.message }}</p><time>{{ log.created_at }}</time></div>
+        {% else %}<p class="panel-empty">Noch keine Importe protokolliert.</p>{% endfor %}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+

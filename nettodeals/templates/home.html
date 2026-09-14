@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8ff">
+  <meta name="description" content="Schweizer Elektronik-Deals mit transparent berechnetem Effektivpreis.">
+  <title>NettoDeals – ehrliche Endpreise für die Schweiz</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="aurora aurora-one" aria-hidden="true"></div>
+  <div class="aurora aurora-two" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="NettoDeals Startseite">
+      <span class="brand-glow" aria-hidden="true"></span>
+      <span>Netto<span>Deals</span></span>
+      <small>CH</small>
+    </a>
+    <span class="header-note">Unabhängig sortiert · Affiliate-finanziert</span>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="eyebrow"><span></span> Schweizer Deal-Radar</div>
+      <h1 id="hero-title">Was lohnt sich<br><em>heute wirklich?</em></h1>
+      <p class="hero-copy">Wir rechnen Gutscheine und Zahlungsboni in den Endpreis ein – und ordnen Angebote nach aktuellen Schweizer Trends und echtem Interesse.</p>
+
+      <form class="search" action="/" method="get" role="search">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+        <label class="sr-only" for="deal-search">Deals durchsuchen</label>
+        <input id="deal-search" name="q" value="{{ q }}" maxlength="100" placeholder="Produkt oder Shop suchen">
+        <button type="submit">Finden</button>
+      </form>
+
+      <div class="signal-row" aria-label="Portalstatus">
+        <span><strong>{{ totals.deals }}</strong> aktive Deals</span>
+        <span><strong>{{ totals.clicks }}</strong> Interessen-Signale</span>
+        <span class="signal-live"><i></i>{% if trend_age is not none %}CH-Trends aktiv{% else %}Lokale Trends aktiv{% endif %}</span>
+      </div>
+    </section>
+
+    {% if categories %}
+    <nav class="category-scroll" aria-label="Kategorien">
+      <a class="chip {% if not selected_category %}active{% endif %}" href="/{% if q %}?q={{ q|urlencode }}{% endif %}">Alle</a>
+      {% for item in categories %}
+      <a class="chip {% if selected_category == item.category %}active{% endif %}" href="/?category={{ item.category|urlencode }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}">
+        {{ item.category }} <small>{{ item.count }}</small>
+      </a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    <section class="deals-section" aria-labelledby="deals-title">
+      <div class="section-heading">
+        <div>
+          <span class="section-kicker">Für dich vorsortiert</span>
+          <h2 id="deals-title">{% if q or selected_category %}Gefundene Angebote{% else %}Jetzt gefragt{% endif %}</h2>
+        </div>
+        <p>{{ total_matches }} Treffer</p>
+      </div>
+
+      {% if deals %}
+      <div class="deal-grid">
+        {% for deal in deals %}
+        <article class="deal-card">
+          <div class="card-topline">
+            <span class="shop">{{ deal.shop_name }}</span>
+            {% if deal.demand_score >= 20 %}
+            <span class="trend-badge"><i></i> Im Trend</span>
+            {% else %}
+            <span class="category">{{ deal.category }}</span>
+            {% endif %}
+          </div>
+
+          <h3>{{ deal.title }}</h3>
+          {% if deal.description %}<p class="description">{{ deal.description }}</p>{% endif %}
+
+          {% if deal.coupon_code %}
+          <button class="coupon" type="button" data-copy="{{ deal.coupon_code }}" aria-label="Gutscheincode {{ deal.coupon_code }} kopieren">
+            <span><small>Gutscheincode</small><strong>{{ deal.coupon_code }}</strong></span>
+            <b data-copy-label>Kopieren</b>
+          </button>
+          {% endif %}
+
+          <div class="price-panel">
+            {% if deal.base_price > 0 %}
+            <div>
+              <small>Effektivpreis</small>
+              <strong>CHF {{ "%.2f"|format(deal.effective_price) }}</strong>
+            </div>
+            {% if deal.savings > 0 %}
+            <div class="saving"><small>Du sparst</small><b>CHF {{ "%.2f"|format(deal.savings) }}</b></div>
+            {% endif %}
+            {% else %}
+            <div><small>Aktion oder Gutschein</small><strong>Deal ansehen</strong></div>
+            {% endif %}
+          </div>
+
+          {% if deal.base_price > 0 and (deal.coupon_discount > 0 or deal.payment_bonus > 0) %}
+          <div class="calculation" aria-label="Preisberechnung">
+            <span>CHF {{ "%.2f"|format(deal.base_price) }}</span>
+            {% if deal.coupon_discount > 0 %}<span>− {{ "%.2f"|format(deal.coupon_discount) }} Gutschein</span>{% endif %}
+            {% if deal.payment_bonus > 0 %}<span>− {{ "%.2f"|format(deal.payment_bonus) }} Bonus</span>{% endif %}
+          </div>
+          {% endif %}
+
+          <a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow sponsored">
+            Zum Angebot <span aria-hidden="true">→</span>
+          </a>
+          <p class="sponsored-note">Beim Kauf können wir eine Provision erhalten. Dein Preis bleibt gleich.</p>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <span aria-hidden="true">⌕</span>
+        <h3>Noch kein passender Deal</h3>
+        <p>Versuche einen allgemeineren Suchbegriff oder zeige wieder alle Angebote.</p>
+        <a href="/">Alle Deals anzeigen</a>
+      </div>
+      {% endif %}
+
+      {% if page_count > 1 %}
+      <nav class="pagination" aria-label="Ergebnisseiten">
+        {% if page > 1 %}
+        <a href="/?page={{ page - 1 }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}{% if selected_category %}&amp;category={{ selected_category|urlencode }}{% endif %}" rel="prev">← Zurück</a>
+        {% else %}<span aria-hidden="true"></span>{% endif %}
+        <span>Seite {{ page }} von {{ page_count }}</span>
+        {% if page < page_count %}
+        <a href="/?page={{ page + 1 }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}{% if selected_category %}&amp;category={{ selected_category|urlencode }}{% endif %}" rel="next">Weiter →</a>
+        {% else %}<span aria-hidden="true"></span>{% endif %}
+      </nav>
+      {% endif %}
+    </section>
+
+    <aside class="method-card">
+      <div class="method-icon" aria-hidden="true">↗</div>
+      <div>
+        <strong>So entsteht „Jetzt gefragt“</strong>
+        <p>Öffentliche Schweizer Suchtrends werden mit anonym aggregierten Deal-Aufrufen der letzten 14 Tage kombiniert. Wir speichern dafür weder Profile noch IP-Adressen.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <a class="brand footer-brand" href="/"><span>Netto<span>Deals</span></span><small>CH</small></a>
+    <p>Klare Preise, ruhiges Design, Schweizer Fokus.</p>
+    <p class="footer-small">© 2026 NettoDeals · Preis- und Verfügbarkeitsänderungen vorbehalten.</p>
+  </footer>
+</body>
+</html>

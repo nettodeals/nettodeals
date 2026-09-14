@@ -1,0 +1,16 @@
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+  "ignore:The anyio\\.abc\\.BlockingPortal alias is deprecated:DeprecationWarning",
+  "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "BLE", "UP"]
+ignore = ["E501"]
