@@ -54,6 +54,10 @@ def init_db(db_path: str) -> None:
                 effective_price REAL NOT NULL DEFAULT 0,
                 shop_name TEXT NOT NULL,
                 affiliate_link TEXT NOT NULL,
+                link_type TEXT NOT NULL DEFAULT 'affiliate',
+                source_name TEXT NOT NULL DEFAULT '',
+                price_type TEXT NOT NULL DEFAULT 'exact',
+                price_checked_at TEXT,
                 coupon_code TEXT,
                 description TEXT,
                 source TEXT NOT NULL DEFAULT 'manual',
@@ -81,6 +85,10 @@ def init_db(db_path: str) -> None:
             "trend_score": "REAL NOT NULL DEFAULT 0",
             "click_count": "INTEGER NOT NULL DEFAULT 0",
             "last_clicked_at": "TEXT",
+            "link_type": "TEXT NOT NULL DEFAULT 'affiliate'",
+            "source_name": "TEXT NOT NULL DEFAULT ''",
+            "price_type": "TEXT NOT NULL DEFAULT 'exact'",
+            "price_checked_at": "TEXT",
         }
         for name, definition in migrations.items():
             if name not in existing:
@@ -147,6 +155,9 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
             "effective_price",
             "shop_name",
             "affiliate_link",
+            "link_type",
+            "source_name",
+            "price_type",
             "coupon_code",
             "description",
             "expires_at",
@@ -167,17 +178,26 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
             status = existing["status"]
             if values["source"] == "manual":
                 status = values.get("status", status)
+            elif status == "archived":
+                status = "draft"
             elif changed and status == "published":
                 # External content changes require another explicit review.
                 status = "draft"
+            if not changed and status == existing["status"]:
+                conn.execute(
+                    "UPDATE deals SET last_seen_at = ?, price_checked_at = ? WHERE id = ?",
+                    (timestamp, values.get("price_checked_at", timestamp), existing["id"]),
+                )
+                return "unchanged"
             conn.execute(
                 """
                 UPDATE deals SET
                     title = ?, category = ?, base_price = ?, coupon_discount = ?,
                     payment_bonus = ?, effective_price = ?, shop_name = ?,
                     affiliate_link = ?, coupon_code = ?, description = ?,
-                    status = ?, updated_at = ?, expires_at = ?, source_url = ?,
-                    last_seen_at = ?, content_hash = ?
+                    link_type = ?, source_name = ?, price_type = ?, price_checked_at = ?,
+                    status = ?, updated_at = ?, expires_at = ?, source_url = ?, last_seen_at = ?,
+                    content_hash = ?
                 WHERE id = ?
                 """,
                 (
@@ -191,6 +211,10 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                     material["affiliate_link"],
                     material["coupon_code"],
                     material["description"],
+                    material["link_type"],
+                    material["source_name"],
+                    material["price_type"],
+                    values.get("price_checked_at", timestamp),
                     status,
                     timestamp,
                     material["expires_at"],
@@ -200,16 +224,17 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                     existing["id"],
                 ),
             )
-            return "updated" if changed else "unchanged"
+            return "updated"
 
         conn.execute(
             """
             INSERT INTO deals (
                 title, category, base_price, coupon_discount, payment_bonus,
                 effective_price, shop_name, affiliate_link, coupon_code,
-                description, source, source_id, status, created_at, updated_at,
-                expires_at, source_url, last_seen_at, content_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                description, link_type, source_name, price_type, price_checked_at, source,
+                source_id, status, created_at, updated_at, expires_at, source_url,
+                last_seen_at, content_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 material["title"],
@@ -222,6 +247,10 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                 material["affiliate_link"],
                 material["coupon_code"],
                 material["description"],
+                material["link_type"],
+                material["source_name"],
+                material["price_type"],
+                values.get("price_checked_at", timestamp),
                 values["source"],
                 values["source_id"],
                 values.get("status", "draft"),

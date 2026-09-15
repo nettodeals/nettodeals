@@ -37,3 +37,18 @@ def test_archive_unseen(tmp_path):
     assert archive_unseen(db_path, "awin", "9999-01-01T00:00:00+00:00") == 1
     with connection(db_path) as conn:
         assert conn.execute("SELECT status FROM deals").fetchone()[0] == "archived"
+
+
+def test_unchanged_import_preserves_content_update_time(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path)
+    values = candidate()
+    upsert_deal(db_path, values)
+    with connection(db_path) as conn:
+        conn.execute("UPDATE deals SET updated_at = '2026-01-01T00:00:00+00:00'")
+
+    assert upsert_deal(db_path, values) == "unchanged"
+    with connection(db_path) as conn:
+        row = conn.execute("SELECT updated_at, price_checked_at FROM deals").fetchone()
+    assert row["updated_at"] == "2026-01-01T00:00:00+00:00"
+    assert row["price_checked_at"]
