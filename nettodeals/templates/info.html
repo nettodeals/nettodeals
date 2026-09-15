@@ -1,4 +1,56 @@
-nettodeal.ch Einzelunternehmen
-Churerstrasse 25
-8852 Altendorf
-nettodeals@gmail.com
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ meta_description }}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="de_CH">
+  <meta property="og:site_name" content="NettoDeals">
+  <meta property="og:title" content="{{ title }} – NettoDeals">
+  <meta property="og:description" content="{{ meta_description }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <title>{{ title }} – NettoDeals</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="NettoDeals Startseite"><span class="brand-glow" aria-hidden="true"></span><span>Netto<span>Deals</span></span><small>CH</small></a>
+    <a class="header-back" href="/">← Startseite</a>
+  </header>
+  <main class="content-main">
+    <span class="section-kicker">NettoDeals Schweiz</span><h1>{{ title }}</h1>
+    {% if page_name == 'ueber-nettodeals' %}
+      <p class="lead">NettoDeals hilft Smartphone-Nutzern in der Schweiz, gefragte Produkte und nachvollziehbar berechnete Angebote schneller einzuordnen.</p>
+      <h2>Was wir tun</h2><p>Wir bündeln redaktionell ausgewählte Produkttrends, veröffentlichte Affiliate-Angebote und anonym aggregierte Interessen-Signale. Neue oder wesentlich geänderte Angebote werden vor der Veröffentlichung geprüft.</p>
+      <h2>Was wir nicht versprechen</h2><p>NettoDeals ist kein Händler. Preise und Verfügbarkeit können sich jederzeit ändern. Massgeblich bleiben die Angaben des verlinkten Preisvergleichs oder Shops.</p>
+    {% elif page_name == 'redaktion' %}
+      <p class="lead">Auswahl, Berechnung und Finanzierung sollen für Nutzer verständlich bleiben.</p>
+      <h2>Produktauswahl</h2><p>Als redaktionelle Signale dienen unter anderem beliebte Produkte und neue Toppreise aus der Schweiz, öffentliche Schweizer Suchtrends sowie anonym aggregierte Aufrufe auf NettoDeals. Ein Trendsignal ist noch kein Qualitätsurteil und keine Kaufempfehlung.</p>
+      <h2>Preisberechnung</h2><p>Feste Gutscheine und Zahlungsboni werden nur berücksichtigt, wenn sie eindeutig zugeordnet und rechnerisch bestimmbar sind. Ein „Ab“-Preis ist der günstigste beim letzten Import erkannte Vergleichspreis.</p>
+      <h2>Finanzierung</h2><p>Affiliate-Links sind als solche gekennzeichnet. Bei einem Kauf kann NettoDeals eine Provision erhalten, ohne dass sich der Preis dadurch erhöht. Redaktionelle Toppreise-Links werden ausdrücklich als provisionsfrei bezeichnet.</p>
+      <h2>Korrekturen</h2><p>Fehlerhafte oder abgelaufene Angaben werden nach Bekanntwerden korrigiert oder archiviert. Bitte nutze für Hinweise die im Impressum angegebene Kontaktadresse.</p>
+    {% elif page_name == 'datenschutz' %}
+      <p class="lead">NettoDeals verwendet auf der öffentlichen Website keine Nutzerprofile und keine personalisierte Werbung.</p>
+      <h2>Serverzugriffe</h2><p>Beim Aufruf der Website können der Hostinganbieter und vorgeschaltete Netzdienste technisch erforderliche Verbindungsdaten wie IP-Adresse, Zeitpunkt, Zieladresse und Browserkennung in Serverprotokollen verarbeiten. Umfang und Aufbewahrung richten sich nach der eingesetzten Hostingkonfiguration.</p>
+      <h2>Interessen-Signale</h2><p>Ausgehende Deal-Aufrufe werden ausschließlich als tägliche Anzahl pro Angebot gespeichert. NettoDeals speichert dabei keine IP-Adresse, kein Nutzerkonto und keine individuelle Klickhistorie in der Anwendungsdatenbank.</p>
+      <h2>Admin-Cookie</h2><p>Nur nach einer Admin-Anmeldung wird ein technisch erforderliches, kurzlebiges HttpOnly-Session-Cookie gesetzt. Es dient ausschließlich dem Schutz des Administrationsbereichs.</p>
+      <h2>Externe Links</h2><p>Beim Öffnen eines Preisvergleichs, Shops oder Social-Media-Kanals gelten die Datenschutzbestimmungen des jeweiligen Anbieters. Affiliate-Links können eine Zuordnung zur Provisionsabrechnung enthalten.</p>
+      <h2>Verantwortliche Stelle</h2><p>Die vollständigen Kontaktdaten müssen vor Veröffentlichung im Impressum ergänzt werden.</p>
+    {% elif page_name == 'impressum' %}
+      <div class="editor-warning"><strong>Vor dem produktiven Deploy ausfüllen</strong><p>Ersetze die folgenden Platzhalter direkt in <code>nettodeals/templates/info.html</code>. Diese Angaben können ohne Kenntnis des Betreibers nicht seriös vorausgefüllt werden.</p></div>
+      <h2>Verantwortlich für NettoDeals.ch</h2><p>nettodeals.ch Einzelunternehmen<br>Churerstrasse 25<br>8852 Altendorf<br>Schweiz</p>
+      <h2>Kontakt</h2><p>E-Mail: nettodeals@gmail.com</p>
+      <h2>Haftungshinweis</h2><p>NettoDeals bemüht sich um aktuelle und korrekte Angaben, übernimmt jedoch keine Gewähr für Preise, Verfügbarkeit oder Inhalte externer Websites. Massgeblich sind die Angaben des jeweiligen Anbieters.</p>
+    {% endif %}
+  </main>
+  <footer>
+    <a class="brand footer-brand" href="/"><span>Netto<span>Deals</span></span><small>CH</small></a>
+    <nav class="footer-links" aria-label="Informationen"><a href="/ueber-nettodeals">Über uns</a><a href="/redaktion">Redaktion</a><a href="/datenschutz">Datenschutz</a><a href="/impressum">Impressum</a></nav>
+    <p class="footer-small">© 2026 NettoDeals</p>
+  </footer>
+</body>
+</html>

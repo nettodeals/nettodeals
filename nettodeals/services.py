@@ -100,6 +100,10 @@ class DealCandidate:
     description: str = ""
     expires_at: str | None = None
     source_url: str = ""
+    link_type: str = "affiliate"
+    source_name: str = ""
+    price_type: str = "exact"
+    price_checked_at: str | None = None
 
     def values(self, *, status: str = "draft") -> dict[str, Any]:
         base = safe_money(self.base_price)
@@ -121,6 +125,10 @@ class DealCandidate:
             "status": status,
             "expires_at": self.expires_at,
             "source_url": normalize_external_url(self.source_url),
+            "link_type": "editorial" if self.link_type == "editorial" else "affiliate",
+            "source_name": clean_text(self.source_name, 120),
+            "price_type": "from" if self.price_type == "from" else "exact",
+            "price_checked_at": self.price_checked_at or now_iso(),
         }
 
 

@@ -5,17 +5,25 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from contextlib import asynccontextmanager, suppress
+from html import escape
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .config import Settings
-from .db import connection, init_db, now_iso, upsert_deal
+from .db import connection, init_db, log_import, now_iso, upsert_deal
 from .security import (
     COOKIE_NAME,
     clear_login_failures,
@@ -28,7 +36,15 @@ from .security import (
     valid_admin_session,
     valid_csrf,
 )
+from .seo import deal_path, display_datetime, slugify
 from .services import DealCandidate, SyncService, safe_money, source_id
+from .toppreise import (
+    MAX_SNAPSHOT_BYTES,
+    MIN_NEW48_ITEMS,
+    MIN_TOP100_ITEMS,
+    SnapshotError,
+    parse_snapshot,
+)
 from .trends import trend_cache_age_seconds
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -66,6 +82,17 @@ TEMPLATE_ENV = Environment(
 
 def _render(name: str, **context: Any) -> HTMLResponse:
     return HTMLResponse(TEMPLATE_ENV.get_template(name).render(**context))
+
+
+def _deal_dict(row: sqlite3.Row) -> dict[str, Any]:
+    deal = dict(row)
+    deal["savings"] = round(max(0.0, deal["base_price"] - deal["effective_price"]), 2)
+    deal["path"] = deal_path(deal["id"], deal["title"])
+    deal["checked_display"] = display_datetime(
+        deal.get("price_checked_at") or deal.get("updated_at")
+    )
+    deal["display_source"] = deal.get("source_name") or deal.get("shop_name")
+    return deal
 
 
 def _client_key(request: Request) -> str:
@@ -114,7 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.0.0",
+        version="3.1.1",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -138,6 +165,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.path.startswith(("/admin", "/go/", "/api/", "/health")):
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "public, max-age=604800"
+        elif request.url.path.startswith("/admin"):
+            response.headers["Cache-Control"] = "no-store"
         if settings.cookie_secure:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
@@ -182,11 +215,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 FROM deals WHERE status = 'published'
                 """
             ).fetchone()
-        deals = []
-        for row in rows:
-            deal = dict(row)
-            deal["savings"] = round(max(0.0, deal["base_price"] - deal["effective_price"]), 2)
-            deals.append(deal)
+        deals = [_deal_dict(row) for row in rows]
+        filtered = bool(query_text or category_text or page > 1)
         return _render(
             "home.html",
             deals=deals,
@@ -198,6 +228,93 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             page=page,
             page_count=page_count,
             total_matches=total_matches,
+            canonical_url=f"{settings.site_url}/",
+            robots="noindex, follow" if filtered else "index, follow",
+            site_url=settings.site_url,
+        )
+
+    @app.get("/deal/{deal_id}/{slug}", response_class=HTMLResponse)
+    def deal_detail(deal_id: int, slug: str):
+        with connection(settings.db_path) as conn:
+            row = conn.execute(
+                "SELECT * FROM deals WHERE id = ? AND status = 'published'", (deal_id,)
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
+            canonical_path = deal_path(deal_id, row["title"])
+            if slug != slugify(row["title"]):
+                return RedirectResponse(canonical_path, status_code=301)
+            related_rows = conn.execute(
+                """
+                SELECT * FROM deals
+                WHERE status = 'published' AND category = ? AND id != ?
+                ORDER BY trend_score DESC, updated_at DESC LIMIT 3
+                """,
+                (row["category"], deal_id),
+            ).fetchall()
+        deal = _deal_dict(row)
+        description = deal["description"] or (
+            f"{deal['title']} aktuell für die Schweiz vergleichen. Preis und "
+            "Verfügbarkeit wurden von NettoDeals transparent dokumentiert."
+        )
+        return _render(
+            "deal.html",
+            deal=deal,
+            related=[_deal_dict(item) for item in related_rows],
+            canonical_url=f"{settings.site_url}{canonical_path}",
+            meta_description=description[:155],
+            site_url=settings.site_url,
+        )
+
+    @app.get("/robots.txt", response_class=PlainTextResponse)
+    def robots():
+        return PlainTextResponse(
+            "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /go/\n"
+            f"Disallow: /api/\nDisallow: /health\n\nSitemap: {settings.site_url}/sitemap.xml\n"
+        )
+
+    @app.get("/sitemap.xml")
+    def sitemap():
+        static_paths = ("/", "/ueber-nettodeals", "/redaktion", "/datenschutz", "/impressum")
+        urls = [f"  <url><loc>{escape(settings.site_url + path)}</loc></url>" for path in static_paths]
+        with connection(settings.db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, title, updated_at FROM deals WHERE status = 'published' ORDER BY id"
+            ).fetchall()
+        for row in rows:
+            location = escape(settings.site_url + deal_path(row["id"], row["title"]))
+            last_modified = escape(str(row["updated_at"])[:10])
+            urls.append(f"  <url><loc>{location}</loc><lastmod>{last_modified}</lastmod></url>")
+        body = '<?xml version="1.0" encoding="UTF-8"?>\n'
+        body += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        body += "\n".join(urls)
+        body += "\n</urlset>\n"
+        return Response(content=body, media_type="application/xml")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return FileResponse(PACKAGE_DIR / "static" / "favicon.svg", media_type="image/svg+xml")
+
+    @app.get("/ueber-nettodeals", response_class=HTMLResponse)
+    @app.get("/redaktion", response_class=HTMLResponse)
+    @app.get("/datenschutz", response_class=HTMLResponse)
+    @app.get("/impressum", response_class=HTMLResponse)
+    def information_page(request: Request):
+        page_name = request.url.path.lstrip("/")
+        pages = {
+            "ueber-nettodeals": ("Über NettoDeals", "So arbeitet der Schweizer Deal-Radar."),
+            "redaktion": ("Redaktion & Transparenz", "Auswahl, Preise und Finanzierung erklärt."),
+            "datenschutz": ("Datenschutz", "Welche technischen Daten verarbeitet werden."),
+            "impressum": ("Impressum", "Anbieterkennzeichnung von NettoDeals.ch."),
+        }
+        title, description = pages[page_name]
+        return _render(
+            "info.html",
+            page_name=page_name,
+            title=title,
+            meta_description=description,
+            canonical_url=f"{settings.site_url}/{page_name}",
+            site_url=settings.site_url,
         )
 
     @app.get("/go/{deal_id}")
@@ -247,7 +364,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.0.0",
+            "version": "3.1.1",
             "sources": sync_service.configured_sources(),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,
@@ -325,6 +442,71 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result = await asyncio.to_thread(sync_service.sync_all)
         return _render("admin.html", **admin_context(request, result=result, error=None))
 
+    @app.post("/admin/toppreise/import", response_class=HTMLResponse)
+    async def import_toppreise_snapshots(
+        request: Request,
+        csrf: Annotated[str, Form()],
+        top100_file: Annotated[UploadFile, File()],
+        new48_file: Annotated[UploadFile, File()],
+        confirm_48: Annotated[str, Form()],
+    ):
+        _verify_csrf(request, settings, csrf)
+        if confirm_48 != "yes":
+            raise HTTPException(status_code=422, detail="48-Stunden-Auswahl nicht bestätigt.")
+        try:
+            uploads = []
+            for upload, collection, label in (
+                (top100_file, "top100", "Top 100"),
+                (new48_file, "new48", "Neue Toppreise (48 Stunden)"),
+            ):
+                raw = await upload.read(MAX_SNAPSHOT_BYTES + 1)
+                if len(raw) > MAX_SNAPSHOT_BYTES:
+                    raise SnapshotError(f"Die Datei «{label}» ist grösser als 5 MB.")
+                if not raw:
+                    raise SnapshotError(f"Die Datei «{label}» ist leer.")
+                minimum_items = MIN_TOP100_ITEMS if collection == "top100" else MIN_NEW48_ITEMS
+                parsed = parse_snapshot(
+                    raw.decode("utf-8", errors="replace"),
+                    collection=collection,
+                    minimum_items=minimum_items,
+                )
+                uploads.append((label, parsed))
+        except SnapshotError as exc:
+            return HTMLResponse(
+                TEMPLATE_ENV.get_template("admin.html").render(
+                    **admin_context(request, result=None, error=str(exc))
+                ),
+                status_code=422,
+            )
+        finally:
+            await top100_file.close()
+            await new48_file.close()
+
+        unique_products: dict[str, DealCandidate] = {}
+        changes = {"created": 0, "updated": 0, "unchanged": 0}
+        for label, parsed in uploads:
+            for candidate in parsed.candidates:
+                unique_products[candidate.source_id] = candidate
+            log_import(
+                settings.db_path,
+                "toppreise",
+                "success",
+                f"{label}: {len(parsed.candidates)} erkannt, {parsed.skipped} übersprungen",
+                len(parsed.candidates),
+            )
+        for candidate in unique_products.values():
+            outcome = upsert_deal(settings.db_path, candidate.values(status="draft"))
+            changes[outcome] += 1
+        message = (
+            f"{len(unique_products)} eindeutige Produkte übernommen: "
+            f"{changes['created']} neu, {changes['updated']} aktualisiert, "
+            f"{changes['unchanged']} unverändert. Neue und geänderte Einträge müssen geprüft werden."
+        )
+        return _render(
+            "admin.html",
+            **admin_context(request, result=None, error=None, import_result=message),
+        )
+
     @app.post("/admin/logout")
     def admin_logout(request: Request, csrf: Annotated[str, Form()]):
         _verify_csrf(request, settings, csrf)
@@ -365,6 +547,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title: Annotated[str, Form()],
         shop_name: Annotated[str, Form()],
         affiliate_link: Annotated[str, Form()],
+        link_type: Annotated[str, Form()] = "affiliate",
         category: Annotated[str, Form()] = "Deals",
         base_price: Annotated[float, Form()] = 0.0,
         coupon_discount: Annotated[float, Form()] = 0.0,
@@ -397,6 +580,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             description=description,
             source="manual",
             source_id=source_id("manual", title, safe_link),
+            link_type=link_type,
         )
         upsert_deal(settings.db_path, candidate.values(status="published"))
         return RedirectResponse("/", status_code=303)

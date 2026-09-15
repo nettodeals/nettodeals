@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8ff">
+  <meta name="description" content="{{ meta_description }}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="de_CH">
+  <meta property="og:site_name" content="NettoDeals">
+  <meta property="og:title" content="{{ deal.title }} – NettoDeals Schweiz">
+  <meta property="og:description" content="{{ meta_description }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta name="twitter:card" content="summary">
+  <title>{{ deal.title }}{% if deal.effective_price > 0 %} {% if deal.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(deal.effective_price) }}{% endif %} – NettoDeals</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="aurora aurora-one" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="NettoDeals Startseite"><span class="brand-glow" aria-hidden="true"></span><span>Netto<span>Deals</span></span><small>CH</small></a>
+    <a class="header-back" href="/">← Alle Angebote</a>
+  </header>
+
+  <main class="detail-main">
+    <nav class="breadcrumbs" aria-label="Brotkrümelnavigation">
+      <a href="/">Startseite</a><span aria-hidden="true">/</span><span>{{ deal.category }}</span>
+    </nav>
+    <article class="detail-card" itemscope itemtype="https://schema.org/Product">
+      <meta itemprop="name" content="{{ deal.title }}">
+      <div class="detail-copy">
+        <span class="section-kicker">{{ deal.category }}</span>
+        <h1>{{ deal.title }}</h1>
+        {% if deal.description %}<p class="detail-description" itemprop="description">{{ deal.description }}</p>{% endif %}
+        <dl class="deal-facts">
+          <div><dt>Quelle</dt><dd>{{ deal.display_source }}</dd></div>
+          <div><dt>Preis geprüft</dt><dd>{{ deal.checked_display }}</dd></div>
+          <div><dt>Linkart</dt><dd>{% if deal.link_type == 'editorial' %}Redaktionell, provisionsfrei{% else %}Affiliate-Link{% endif %}</dd></div>
+        </dl>
+      </div>
+      <aside class="detail-offer">
+        {% if deal.effective_price > 0 %}
+        <small>{% if deal.price_type == 'from' %}Günstigster gefundener Preis{% else %}Effektivpreis{% endif %}</small>
+        <strong>{% if deal.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(deal.effective_price) }}</strong>
+        {% else %}<strong>Aktion ansehen</strong>{% endif %}
+        {% if deal.coupon_code %}<div class="detail-code"><small>Gutscheincode</small><b>{{ deal.coupon_code }}</b></div>{% endif %}
+        <a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow{% if deal.link_type == 'affiliate' %} sponsored{% endif %}">{% if deal.link_type == 'editorial' %}Preise vergleichen{% else %}Zum Angebot{% endif %}<span aria-hidden="true">→</span></a>
+        {% if deal.link_type == 'editorial' %}<p class="sponsored-note">Redaktioneller Direktlink · NettoDeals erhält keine Provision.</p>{% else %}<p class="sponsored-note">Beim Kauf können wir eine Provision erhalten. Dein Preis bleibt gleich.</p>{% endif %}
+      </aside>
+    </article>
+
+    <section class="detail-note">
+      <h2>Preishinweis</h2>
+      <p>Preise und Verfügbarkeit können sich seit der letzten Prüfung geändert haben. Massgeblich sind die Angaben auf der verlinkten Zielseite. Ein „Ab“-Preis bezeichnet den günstigsten beim Import erkannten Preis und nicht zwingend ein Angebot eines bestimmten Händlers.</p>
+    </section>
+
+    {% if related %}
+    <section class="related-section" aria-labelledby="related-title">
+      <span class="section-kicker">Weiter entdecken</span><h2 id="related-title">Ähnliche Angebote</h2>
+      <div class="related-grid">
+        {% for item in related %}<a href="{{ item.path }}"><span>{{ item.category }}</span><strong>{{ item.title }}</strong>{% if item.effective_price > 0 %}<b>{% if item.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(item.effective_price) }}</b>{% endif %}</a>{% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </main>
+
+  <footer>
+    <a class="brand footer-brand" href="/"><span>Netto<span>Deals</span></span><small>CH</small></a>
+    <nav class="footer-links" aria-label="Informationen"><a href="/ueber-nettodeals">Über uns</a><a href="/redaktion">Redaktion</a><a href="/datenschutz">Datenschutz</a><a href="/impressum">Impressum</a></nav>
+    <p class="footer-small">© 2026 NettoDeals · Preis- und Verfügbarkeitsänderungen vorbehalten.</p>
+  </footer>
+</body>
+</html>

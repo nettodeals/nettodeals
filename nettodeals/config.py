@@ -25,6 +25,11 @@ def _csv(name: str, default: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in os.getenv(name, default).split(",") if item.strip())
 
 
+def _site_url() -> str:
+    value = os.getenv("SITE_URL", "https://nettodeals.ch").strip().rstrip("/")
+    return value if value.startswith("https://") else "https://nettodeals.ch"
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     app_port: int = 8000
@@ -34,6 +39,7 @@ class Settings:
     admin_session_seconds: int = 28_800
     allowed_hosts: tuple[str, ...] = ("*",)
     enable_api_docs: bool = False
+    site_url: str = "https://nettodeals.ch"
 
     awin_publisher_id: str = ""
     awin_api_token: str = ""
@@ -65,6 +71,7 @@ class Settings:
             admin_session_seconds=_int("ADMIN_SESSION_SECONDS", 28_800, minimum=300),
             allowed_hosts=_csv("ALLOWED_HOSTS", "*"),
             enable_api_docs=_bool("ENABLE_API_DOCS", False),
+            site_url=_site_url(),
             awin_publisher_id=os.getenv("AWIN_PUBLISHER_ID", ""),
             awin_api_token=os.getenv("AWIN_API_TOKEN", ""),
             awin_regions=_csv("AWIN_REGIONS", "CH"),

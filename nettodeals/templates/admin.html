@@ -33,14 +33,31 @@
 
     {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
     {% if result %}<div class="notice success" role="status">Synchronisierung beendet: {{ result.sources|length }} Quellen verarbeitet.</div>{% endif %}
+    {% if import_result %}<div class="notice success" role="status">{{ import_result }}</div>{% endif %}
 
     <details class="admin-panel" open>
+      <summary>Toppreise-Auswahl importieren</summary>
+      <div class="import-help">
+        <p>Speichere zuerst <a href="https://www.toppreise.ch/topprodukte" target="_blank" rel="noopener noreferrer nofollow">Top 100 ↗</a>. Wähle danach bei <a href="https://www.toppreise.ch/neue-toppreise" target="_blank" rel="noopener noreferrer nofollow">Neue Toppreise ↗</a> den Zeitraum <strong>48 Stunden</strong> und speichere auch diese Seite als HTML.</p>
+        <p>Der Import übernimmt höchstens 100 Produkte je Datei als redaktionelle Entwürfe. Bilder werden nicht kopiert; veröffentlichen musst du jeden Eintrag selbst.</p>
+      </div>
+      <form action="/admin/toppreise/import" method="post" enctype="multipart/form-data" class="snapshot-form">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <label>HTML-Datei „Top 100“<input name="top100_file" type="file" accept=".html,.htm,text/html" required></label>
+        <label>HTML-Datei „Neue Toppreise – 48 Stunden“<input name="new48_file" type="file" accept=".html,.htm,text/html" required></label>
+        <label class="confirm-row"><input name="confirm_48" type="checkbox" value="yes" required><span>Ich habe vor dem Speichern der zweiten Seite „48 Stunden“ ausgewählt.</span></label>
+        <button class="primary-button" type="submit">Als Entwürfe importieren</button>
+      </form>
+    </details>
+
+    <details class="admin-panel">
       <summary>Manuellen Deal erfassen</summary>
       <form action="/admin/deals/create" method="post" class="deal-form">
         <input type="hidden" name="csrf" value="{{ csrf_token }}">
         <label>Titel<input name="title" maxlength="300" required></label>
         <label>Shop<input name="shop_name" maxlength="120" required></label>
-        <label class="wide">HTTPS-Affiliate-Link<input name="affiliate_link" type="url" maxlength="2048" required></label>
+        <label class="wide">HTTPS-Ziel-Link<input name="affiliate_link" type="url" maxlength="2048" required></label>
+        <label>Link-Kennzeichnung<select name="link_type"><option value="affiliate">Affiliate-Link</option><option value="editorial">Redaktionell, provisionsfrei</option></select></label>
         <label>Kategorie<input name="category" value="Deals" maxlength="80"></label>
         <label>Basispreis<input name="base_price" type="number" min="0" max="10000000" step="0.01" value="0"></label>
         <label>Gutscheinabzug<input name="coupon_discount" type="number" min="0" max="10000000" step="0.01" value="0"></label>
@@ -90,4 +107,3 @@
   </main>
 </body>
 </html>
-

@@ -8,6 +8,7 @@ from nettodeals.app import create_app
 from nettodeals.db import connection, upsert_deal
 from nettodeals.security import COOKIE_NAME, csrf_token
 from nettodeals.services import DealCandidate
+from tests.test_toppreise import snapshot
 
 
 def login(client, settings):
@@ -100,6 +101,16 @@ def test_health_is_generic(client):
     assert client.get("/health").json() == {"status": "healthy", "database": "connected"}
 
 
+def test_home_links_official_social_channels_safely(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'href="https://x.com/nettodeals"' in response.text
+    assert 'href="https://www.instagram.com/nettodeals.ch/"' in response.text
+    assert 'href="https://www.tiktok.com/@nettodealsschweiz?lang=de-DE"' in response.text
+    assert response.text.count('rel="me noopener noreferrer"') == 3
+    assert response.text.count('target="_blank"') == 3
+
+
 def test_home_paginates_results(client, settings):
     for index in range(25):
         deal = DealCandidate(
@@ -127,3 +138,95 @@ def test_home_paginates_results(client, settings):
 def test_short_admin_secret_is_rejected(settings):
     with pytest.raises(ValueError, match="at least 32"):
         create_app(replace(settings, admin_token="too-short"))
+
+
+def test_admin_imports_toppreise_snapshots_as_unique_drafts(client, settings):
+    csrf = login(client, settings)
+    top100 = snapshot(
+        *((str(index), f"Produkt {index}", "99.90", "Elektronik") for index in range(1, 51))
+    )
+    new48 = snapshot(
+        *((str(index), f"Produkt {index}", "99.90", "Elektronik") for index in range(46, 56)),
+        period=48,
+    )
+    response = client.post(
+        "/admin/toppreise/import",
+        data={"csrf": csrf, "confirm_48": "yes"},
+        files={
+            "top100_file": ("top100.html", top100, "text/html"),
+            "new48_file": ("new48.html", new48, "text/html"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert "55 eindeutige Produkte übernommen" in response.text
+    with connection(settings.db_path) as conn:
+        deals = conn.execute(
+            "SELECT source_id, status, link_type FROM deals ORDER BY source_id"
+        ).fetchall()
+    assert len(deals) == 55
+    assert all(row["status"] == "draft" for row in deals)
+    assert all(row["link_type"] == "editorial" for row in deals)
+
+
+def test_editorial_deal_is_disclosed_without_sponsored_rel(client, settings):
+    candidate = DealCandidate(
+        title="Redaktionelles Produkt",
+        category="Produkte",
+        base_price=50,
+        shop_name="Toppreise.ch",
+        affiliate_link="https://www.toppreise.ch/preisvergleich/Produkt/test-p1",
+        source="toppreise",
+        source_id="1",
+        link_type="editorial",
+    )
+    upsert_deal(settings.db_path, candidate.values(status="published"))
+
+    response = client.get("/")
+    assert "Zum Preisvergleich" in response.text
+    assert "NettoDeals erhält keine Provision" in response.text
+    assert 'rel="nofollow sponsored"' not in response.text
+
+
+def test_product_detail_has_canonical_metadata_and_redirects_slug(client, settings):
+    candidate = DealCandidate(
+        title="Kamera für die Schweiz",
+        category="Kameras",
+        base_price=799,
+        shop_name="Preisvergleich",
+        affiliate_link="https://www.toppreise.ch/preisvergleich/Kameras/test-p7",
+        source="toppreise",
+        source_id="7",
+        source_name="Toppreise.ch",
+        link_type="editorial",
+        price_type="from",
+    )
+    upsert_deal(settings.db_path, candidate.values(status="published"))
+    with connection(settings.db_path) as conn:
+        deal_id = conn.execute("SELECT id FROM deals").fetchone()[0]
+
+    wrong = client.get(f"/deal/{deal_id}/falsch", follow_redirects=False)
+    assert wrong.status_code == 301
+    detail = client.get(wrong.headers["location"])
+    assert detail.status_code == 200
+    assert f'<link rel="canonical" href="{settings.site_url}{wrong.headers["location"]}">' in detail.text
+    assert "ab CHF 799.00" in detail.text
+    assert "Toppreise.ch" in detail.text
+
+
+def test_seo_endpoints_and_private_noindex_headers(client, settings):
+    robots = client.get("/robots.txt")
+    assert robots.status_code == 200
+    assert f"Sitemap: {settings.site_url}/sitemap.xml" in robots.text
+    assert "Disallow: /admin" in robots.text
+
+    sitemap = client.get("/sitemap.xml")
+    assert sitemap.status_code == 200
+    assert f"{settings.site_url}/ueber-nettodeals" in sitemap.text
+    assert sitemap.headers["content-type"].startswith("application/xml")
+
+    assert client.get("/favicon.ico").status_code == 200
+    admin = client.get("/admin", follow_redirects=False)
+    assert admin.headers["x-robots-tag"] == "noindex, nofollow"
+    filtered = client.get("/?q=kamera")
+    assert '<meta name="robots" content="noindex, follow">' in filtered.text

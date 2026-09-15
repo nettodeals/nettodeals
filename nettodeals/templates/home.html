@@ -5,7 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f8ff">
   <meta name="description" content="Schweizer Elektronik-Deals mit transparent berechnetem Effektivpreis.">
+  <meta name="robots" content="{{ robots }}">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="de_CH">
+  <meta property="og:site_name" content="NettoDeals">
+  <meta property="og:title" content="NettoDeals – ehrliche Endpreise für die Schweiz">
+  <meta property="og:description" content="Schweizer Produkttrends und Deals mit transparenten Preisen.">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta name="twitter:card" content="summary">
   <title>NettoDeals – ehrliche Endpreise für die Schweiz</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -19,7 +29,7 @@
       <span>Netto<span>Deals</span></span>
       <small>CH</small>
     </a>
-    <span class="header-note">Unabhängig sortiert · Affiliate-finanziert</span>
+    <span class="header-note">Redaktionell geprüft · transparent gekennzeichnet</span>
   </header>
 
   <main>
@@ -67,7 +77,7 @@
         {% for deal in deals %}
         <article class="deal-card">
           <div class="card-topline">
-            <span class="shop">{{ deal.shop_name }}</span>
+            <span class="shop">{{ deal.display_source }}</span>
             {% if deal.demand_score >= 20 %}
             <span class="trend-badge"><i></i> Im Trend</span>
             {% else %}
@@ -75,7 +85,7 @@
             {% endif %}
           </div>
 
-          <h3>{{ deal.title }}</h3>
+          <h3><a class="card-title-link" href="{{ deal.path }}">{{ deal.title }}</a></h3>
           {% if deal.description %}<p class="description">{{ deal.description }}</p>{% endif %}
 
           {% if deal.coupon_code %}
@@ -88,8 +98,8 @@
           <div class="price-panel">
             {% if deal.base_price > 0 %}
             <div>
-              <small>Effektivpreis</small>
-              <strong>CHF {{ "%.2f"|format(deal.effective_price) }}</strong>
+              <small>{% if deal.price_type == 'from' %}Günstigster gefundener Preis{% else %}Effektivpreis{% endif %}</small>
+              <strong>{% if deal.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(deal.effective_price) }}</strong>
             </div>
             {% if deal.savings > 0 %}
             <div class="saving"><small>Du sparst</small><b>CHF {{ "%.2f"|format(deal.savings) }}</b></div>
@@ -98,6 +108,7 @@
             <div><small>Aktion oder Gutschein</small><strong>Deal ansehen</strong></div>
             {% endif %}
           </div>
+          <p class="price-checked">Preis geprüft: {{ deal.checked_display }}</p>
 
           {% if deal.base_price > 0 and (deal.coupon_discount > 0 or deal.payment_bonus > 0) %}
           <div class="calculation" aria-label="Preisberechnung">
@@ -107,10 +118,14 @@
           </div>
           {% endif %}
 
-          <a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow sponsored">
-            Zum Angebot <span aria-hidden="true">→</span>
+          <a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow{% if deal.link_type == 'affiliate' %} sponsored{% endif %}">
+            {% if deal.link_type == 'editorial' %}Zum Preisvergleich{% else %}Zum Angebot{% endif %} <span aria-hidden="true">→</span>
           </a>
+          {% if deal.link_type == 'editorial' %}
+          <p class="sponsored-note">Redaktioneller Direktlink · NettoDeals erhält keine Provision.</p>
+          {% else %}
           <p class="sponsored-note">Beim Kauf können wir eine Provision erhalten. Dein Preis bleibt gleich.</p>
+          {% endif %}
         </article>
         {% endfor %}
       </div>
@@ -140,7 +155,7 @@
       <div class="method-icon" aria-hidden="true">↗</div>
       <div>
         <strong>So entsteht „Jetzt gefragt“</strong>
-        <p>Öffentliche Schweizer Suchtrends werden mit anonym aggregierten Deal-Aufrufen der letzten 14 Tage kombiniert. Wir speichern dafür weder Profile noch IP-Adressen.</p>
+        <p>Top-Produkte und neue Toppreise der letzten 48 Stunden liefern eine redaktionelle Vorauswahl. Öffentliche Schweizer Suchtrends und anonym aggregierte Deal-Aufrufe helfen bei der Reihenfolge. Wir speichern weder Profile noch IP-Adressen.</p>
       </div>
     </aside>
   </main>
@@ -148,6 +163,12 @@
   <footer>
     <a class="brand footer-brand" href="/"><span>Netto<span>Deals</span></span><small>CH</small></a>
     <p>Klare Preise, ruhiges Design, Schweizer Fokus.</p>
+    <nav class="footer-links" aria-label="Informationen">
+      <a href="/ueber-nettodeals">Über uns</a>
+      <a href="/redaktion">Redaktion &amp; Transparenz</a>
+      <a href="/datenschutz">Datenschutz</a>
+      <a href="/impressum">Impressum</a>
+    </nav>
     <nav class="social-links" aria-label="NettoDeals auf Social Media">
       <a href="https://x.com/nettodeals" target="_blank" rel="me noopener noreferrer" aria-label="NettoDeals auf X – öffnet in neuem Tab">
         <span class="social-icon social-icon-x" aria-hidden="true">X</span>
