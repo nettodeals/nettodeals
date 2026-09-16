@@ -13,7 +13,7 @@ from typing import Any
 import requests
 
 from .config import Settings
-from .db import archive_unseen, connection, log_import, now_iso, upsert_deal
+from .db import archive_unseen, connection, expire_due_deals, log_import, now_iso, upsert_deal
 from .security import normalize_external_url, redact_secrets
 from .trends import fetch_google_trends, store_and_apply_trends
 
@@ -104,6 +104,16 @@ class DealCandidate:
     source_name: str = ""
     price_type: str = "exact"
     price_checked_at: str | None = None
+    manufacturer_uvp: float = 0.0
+    image_url: str = ""
+    image_source: str = ""
+    review_summary: str = ""
+    youtube_reviews: str = "[]"
+    coupon_terms: str = ""
+    coupon_expires_at: str | None = None
+    enrichment_status: str = "pending"
+    enrichment_notes: str = ""
+    gtin: str = ""
 
     def values(self, *, status: str = "draft") -> dict[str, Any]:
         base = safe_money(self.base_price)
@@ -129,6 +139,16 @@ class DealCandidate:
             "source_name": clean_text(self.source_name, 120),
             "price_type": "from" if self.price_type == "from" else "exact",
             "price_checked_at": self.price_checked_at or now_iso(),
+            "manufacturer_uvp": safe_money(self.manufacturer_uvp),
+            "image_url": normalize_external_url(self.image_url),
+            "image_source": clean_text(self.image_source, 160),
+            "review_summary": clean_text(self.review_summary, 3000),
+            "youtube_reviews": self.youtube_reviews[:8000],
+            "coupon_terms": clean_text(self.coupon_terms, 1000),
+            "coupon_expires_at": self.coupon_expires_at,
+            "enrichment_status": clean_text(self.enrichment_status, 40) or "pending",
+            "enrichment_notes": clean_text(self.enrichment_notes, 1000),
+            "gtin": clean_text(self.gtin, 32),
         }
 
 
@@ -233,6 +253,22 @@ def map_tradedoubler_product(
                 source="tradedoubler_product",
                 source_id=source_id("tradedoubler", feed_id, product_id, offer_id, title),
                 source_url=first(offer, "sourceProductUrl", default=""),
+                manufacturer_uvp=first(
+                    offer,
+                    "regularPrice",
+                    "originalPrice",
+                    "recommendedRetailPrice",
+                    default=first(product, "regularPrice", "originalPrice", "recommendedRetailPrice", default=0),
+                ),
+                image_url=first(
+                    offer,
+                    "imageUrl",
+                    "imageURL",
+                    "productImage",
+                    default=first(product, "imageUrl", "imageURL", "productImage", default=""),
+                ),
+                image_source=first(offer, "programName", "merchantName", default="Affiliatefeed"),
+                gtin=first(offer, "ean", "gtin", "eanCode", default=first(product, "ean", "gtin", "eanCode", default="")),
             )
         )
     return candidates
@@ -502,12 +538,13 @@ class SyncService:
             with connection(self.settings.db_path) as conn:
                 conn.execute(
                     """
-                    UPDATE deals SET status = 'archived', updated_at = ?
-                    WHERE status IN ('draft', 'published')
+                    UPDATE deals SET status = 'expired', expired_at = ?, updated_at = ?
+                    WHERE status = 'published'
                       AND expires_at IS NOT NULL AND expires_at < ?
                     """,
-                    (now_iso(), now_iso()),
+                    (now_iso(), now_iso(), now_iso()),
                 )
+            expire_due_deals(self.settings.db_path)
             return {"status": "complete", "sources": sources, "finished_at": now_iso()}
         finally:
             self._lock.release()

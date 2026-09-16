@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Vergangene Schweizer Deals als transparente Preisreferenz.">
+  <link rel="canonical" href="{{ canonical_url }}"><title>Vergangene Deals – NettoDeals</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/app.css">
+</head>
+<body><div class="aurora aurora-one" aria-hidden="true"></div>
+  <header class="site-header"><a class="brand" href="/"><span class="brand-glow"></span><span>Netto<span>Deals</span></span><small>CH</small></a><a class="header-back" href="/">← Aktuelle Deals</a></header>
+  <main class="archive-main"><span class="section-kicker">Preishistorie</span><h1>Vergangene Deals</h1><p class="archive-lead">Diese Angebote sind abgelaufen. Sie bleiben ausgegraut als Preisreferenz sichtbar; die früheren Kaufbuttons sind deaktiviert.</p>
+    <div class="deal-grid expired-grid">{% for deal in deals %}<article class="deal-card expired-card">{% if deal.image_url %}<img class="product-image" src="{{ deal.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}<span class="expired-label">Abgelaufen</span><h2><a href="{{ deal.path }}">{{ deal.title }}</a></h2><p>{{ deal.shop_name }}</p><strong>zuletzt CHF {{ "%.2f"|format(deal.effective_price) }}</strong><a class="archive-link" href="{{ deal.path }}">Historie ansehen</a></article>{% else %}<p>Noch keine vergangenen Deals.</p>{% endfor %}</div>
+  </main>
+</body></html>

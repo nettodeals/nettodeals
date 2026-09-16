@@ -1,4 +1,4 @@
-# NettoDeals.ch 3.1.2 🇨🇭
+# NettoDeals.ch 3.2.0 🇨🇭
 
 Ein mobiles, selbst gehostetes Elektronik-Deal-Portal für die Schweiz. NettoDeals
 berechnet den Effektivpreis nach festen Gutscheinen und Zahlungsboni, importiert
@@ -41,6 +41,26 @@ Die vollständige Zuordnung der behobenen Befunde und Upgrade-Hinweise steht in
 - getrennte Grössenlimits von 20 MB für das Webarchiv und 5 MB für HTML;
 - mobilgerechte Dateiauswahl für HTML, HTM, MHT und MHTML.
 
+## Neu in Version 3.2.0
+
+- Toppreise bleibt ausschliesslich interne Signal- und Prüfquelle; Toppreise-Links
+  können nicht mehr als öffentliches Kaufziel veröffentlicht werden;
+- Ein-Klick-Anreicherung gleicht Entwürfe mit vorhandenen TradeDoubler-
+  Produktfeeds ab und übernimmt nur ausreichend sicher zugeordnete Direktangebote;
+- fehlende Händlerdaten können mobil im Entwurf ergänzt werden;
+- lizenzierte Produktbilder aus Partnerfeeds, Hersteller-UVP, transparente
+  Rabattberechnung und der Hinweis „Gefunden bei …“;
+- Gutscheine werden nach Shop und Gültigkeit aus Awin-/TradeDoubler-Feeds
+  vorgeschlagen, Bedingungen bleiben sichtbar;
+- optional bis zu drei passende externe YouTube-Beiträge über die offizielle
+  YouTube Data API;
+- automatisch erzeugter, ausdrücklich nicht als eigener Produkttest dargestellter
+  NettoDeals-Kurzcheck;
+- standardmässig 48 Stunden Laufzeit sowie eine öffentlich sichtbare,
+  ausgegraute Sammlung „Vergangene Deals“;
+- veröffentlichte und vergangene Angebote lassen sich im Adminbereich beenden
+  beziehungsweise erneut zur Prüfung öffnen.
+
 ## Kostenlose Trendsuche für die Schweiz
 
 Direktes Scraping von Toppreise ist für Serveranwendungen unzuverlässig und kann
@@ -68,11 +88,31 @@ einen redaktionellen Startbestand aus zwei Toppreise-Ansichten übernehmen:
 
 Der Import ist bewusst manuell, weil direkte Serverabrufe von Toppreise je nach
 Netzwerk blockiert werden können. Er übernimmt pro Datei höchstens 100 Titel,
-Preise und Produktlinks, führt Überschneidungen über die Toppreise-Produkt-ID
-zusammen und legt alles als prüfpflichtigen Entwurf an. Bilder werden nicht
-kopiert. Veröffentlichte redaktionelle Links sind klar als provisionsfrei
-gekennzeichnet. Vor regelmässiger oder kommerzieller Nutzung sind die jeweils
-aktuellen Bedingungen von Toppreise zu prüfen.
+Preise und Produktlinks ausschliesslich als interne Rechercheangaben, führt
+Überschneidungen über die Toppreise-Produkt-ID zusammen und legt alles als
+prüfpflichtigen Entwurf an. Bilder werden nicht kopiert. Eine Veröffentlichung
+ist erst mit einem direkten Händlerlink, konkretem Shop und positivem Preis
+möglich. Vor regelmässiger oder kommerzieller Nutzung sind die jeweils aktuellen
+Bedingungen von Toppreise zu prüfen und idealerweise eine schriftliche Erlaubnis
+einzuholen.
+
+### Automatisierter Redaktionsablauf
+
+1. Toppreise-Snapshots liefern Produkttrends als Entwürfe.
+2. **Anreichern & veröffentlichen** sucht in bereits importierten Partnerangeboten
+   nach demselben Modell. Abweichende Modellnummern werden abgewiesen.
+3. Bei sicherem Treffer übernimmt das System Händler, Direktlink, Preis, Bild,
+   UVP und – wenn vorhanden – einen noch gültigen Shop-Gutschein.
+4. Fehlt ein Partnerangebot, bleibt der Entwurf unveröffentlicht und zeigt die
+   mobil ausfüllbaren Pflichtfelder.
+5. Der Kurzcheck und optionale YouTube-Verweise werden erzeugt; danach läuft der
+   Deal höchstens 48 Stunden.
+6. Anschliessend wechselt er automatisch zu `/vergangene-deals`. Der alte
+   Kaufbutton wird entfernt, die Preisreferenz bleibt sichtbar.
+
+Gutscheine werden nicht automatisch als Preisabzug verrechnet, wenn ihr Feed
+nur einen Prozentwert oder unklare Bedingungen enthält. Damit wird kein nicht
+verifizierter Endpreis versprochen.
 
 Das System speichert keine IP-Adresse, keinen Referrer und keine personenbezogene
 Klickhistorie. Ältere Tagesaggregate werden automatisch entfernt. Für hohe Last
@@ -136,6 +176,8 @@ als unprivilegierter Benutzer und besitzt einen Healthcheck.
 | `AWIN_API_TOKEN` | leer | Awin Bearer-Token |
 | `TRADEDOUBLER_PRODUCTS_TOKEN` | leer | TradeDoubler Products-Token |
 | `TRADEDOUBLER_VOUCHERS_TOKEN` | leer | TradeDoubler Vouchers-Token |
+| `YOUTUBE_API_KEY` | leer | Optional: offizielle YouTube-Suche für externe Reviews |
+| `DEAL_LIFETIME_HOURS` | `48` | Maximale öffentliche Laufzeit, 1 bis 720 Stunden |
 
 API-Fehler werden vor dem Speichern von bekannten Geheimnissen bereinigt. Die
 ungeschützte Statusroute meldet nur Aktivierungszustände und niemals Dateipfade
@@ -144,14 +186,13 @@ oder Tokenwerte. Interaktive API-Dokumentation ist standardmäßig deaktiviert.
 ## Moderationsmodell
 
 - Neue Affiliate-Angebote beginnen immer als `draft`.
-- Toppreise-Snapshots beginnen ebenfalls immer als `draft` und werden als
-  redaktionelle, provisionsfreie Links gekennzeichnet.
-- Eine Veröffentlichung erfordert eine gültige HTTPS-Zieladresse.
+- Toppreise-Snapshots beginnen immer als `draft` und bleiben interne Signale.
+- Eine Veröffentlichung erfordert einen direkten HTTPS-Händlerlink, Shop und Preis.
 - Ändern Affiliate-APIs sicherheitsrelevante Inhalte, fällt der Deal wieder auf
   `draft` zurück.
 - Nur nach einem vollständig erfolgreichen, nicht abgeschnittenen Import werden
   nicht mehr gelieferte Datensätze archiviert.
-- Ein `expires_at` in der Vergangenheit archiviert den Deal automatisch.
+- Ein `expires_at` in der Vergangenheit verschiebt den Deal sichtbar zu `expired`.
 
 ## Entwicklung und Tests
 
