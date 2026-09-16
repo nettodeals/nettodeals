@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from contextlib import asynccontextmanager, suppress
 from html import escape
@@ -23,7 +24,9 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .config import Settings
-from .db import connection, init_db, log_import, now_iso, upsert_deal
+from .db import connection, expire_due_deals, init_db, log_import, now_iso, upsert_deal
+from .editorial import is_direct_merchant_url
+from .editorial import publish_deal as publish_enriched_deal
 from .security import (
     COOKIE_NAME,
     clear_login_failures,
@@ -62,6 +65,8 @@ HOME_PAGE_QUERY = """
            ), 0), 50) * 2.0) AS demand_score
     FROM deals
     WHERE status = 'published' AND affiliate_link != ''
+      AND affiliate_link NOT LIKE 'https://%toppreise.ch/%'
+      AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
       AND (? = '' OR title LIKE ? OR shop_name LIKE ? OR description LIKE ?)
       AND (? = '' OR category = ?)
     ORDER BY demand_score DESC, updated_at DESC, effective_price ASC
@@ -70,6 +75,8 @@ HOME_PAGE_QUERY = """
 HOME_COUNT_QUERY = """
     SELECT COUNT(*) FROM deals
     WHERE status = 'published' AND affiliate_link != ''
+      AND affiliate_link NOT LIKE 'https://%toppreise.ch/%'
+      AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
       AND (? = '' OR title LIKE ? OR shop_name LIKE ? OR description LIKE ?)
       AND (? = '' OR category = ?)
 """
@@ -92,7 +99,15 @@ def _deal_dict(row: sqlite3.Row) -> dict[str, Any]:
     deal["checked_display"] = display_datetime(
         deal.get("price_checked_at") or deal.get("updated_at")
     )
-    deal["display_source"] = deal.get("source_name") or deal.get("shop_name")
+    deal["display_source"] = deal.get("shop_name") or deal.get("source_name")
+    uvp = safe_money(deal.get("manufacturer_uvp"))
+    price = safe_money(deal.get("effective_price"))
+    deal["uvp_discount_percent"] = round((uvp - price) / uvp * 100) if uvp > price > 0 else 0
+    try:
+        deal["youtube_reviews_list"] = json.loads(deal.get("youtube_reviews") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        deal["youtube_reviews_list"] = []
+    deal["is_expired"] = deal.get("status") == "expired"
     return deal
 
 
@@ -129,20 +144,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await asyncio.to_thread(sync_service.sync_all)
             await asyncio.sleep(settings.auto_sync_interval)
 
+    async def expiry_loop() -> None:
+        while True:
+            await asyncio.to_thread(expire_due_deals, settings.db_path)
+            await asyncio.sleep(600)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         init_db(settings.db_path)
         task = asyncio.create_task(auto_sync_loop()) if settings.auto_sync_enabled else None
+        expiry_task = asyncio.create_task(expiry_loop())
         yield
-        if task:
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+        for background_task in (task, expiry_task):
+            if background_task:
+                background_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await background_task
 
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.1.2",
+        version="3.2.0",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -182,6 +204,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         category: Annotated[str, Query(max_length=80)] = "",
         page: Annotated[int, Query(ge=1, le=10_000)] = 1,
     ):
+        expire_due_deals(settings.db_path)
         query_text = q.strip()
         category_text = category.strip()
         needle = f"%{query_text}%" if query_text else ""
@@ -205,6 +228,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """
                 SELECT category, COUNT(*) AS count FROM deals
                 WHERE status = 'published' AND affiliate_link != ''
+                  AND affiliate_link NOT LIKE 'https://%toppreise.ch/%'
+                  AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
                 GROUP BY category ORDER BY count DESC, category ASC LIMIT 12
                 """
             ).fetchall()
@@ -214,6 +239,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                        COALESCE(SUM(click_count), 0) AS clicks,
                        COALESCE(MAX(updated_at), '') AS updated_at
                 FROM deals WHERE status = 'published'
+                  AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
                 """
             ).fetchone()
         deals = [_deal_dict(row) for row in rows]
@@ -238,9 +264,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def deal_detail(deal_id: int, slug: str):
         with connection(settings.db_path) as conn:
             row = conn.execute(
-                "SELECT * FROM deals WHERE id = ? AND status = 'published'", (deal_id,)
+                "SELECT * FROM deals WHERE id = ? AND status IN ('published', 'expired')", (deal_id,)
             ).fetchone()
             if not row:
+                raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
+            if not is_direct_merchant_url(row["affiliate_link"]):
                 raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
             canonical_path = deal_path(deal_id, row["title"])
             if slug != slugify(row["title"]):
@@ -249,12 +277,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """
                 SELECT * FROM deals
                 WHERE status = 'published' AND category = ? AND id != ?
+                  AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
                 ORDER BY trend_score DESC, updated_at DESC LIMIT 3
                 """,
                 (row["category"], deal_id),
             ).fetchall()
         deal = _deal_dict(row)
-        description = deal["description"] or (
+        description = deal.get("review_summary") or deal["description"] or (
             f"{deal['title']} aktuell für die Schweiz vergleichen. Preis und "
             "Verfügbarkeit wurden von NettoDeals transparent dokumentiert."
         )
@@ -267,6 +296,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             site_url=settings.site_url,
         )
 
+    @app.get("/vergangene-deals", response_class=HTMLResponse)
+    def expired_deals():
+        expire_due_deals(settings.db_path)
+        with connection(settings.db_path) as conn:
+            rows = conn.execute(
+                "SELECT * FROM deals WHERE status = 'expired' ORDER BY expired_at DESC LIMIT 120"
+            ).fetchall()
+        return _render(
+            "expired.html",
+            deals=[_deal_dict(row) for row in rows],
+            canonical_url=f"{settings.site_url}/vergangene-deals",
+        )
+
     @app.get("/robots.txt", response_class=PlainTextResponse)
     def robots():
         return PlainTextResponse(
@@ -276,11 +318,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/sitemap.xml")
     def sitemap():
-        static_paths = ("/", "/ueber-nettodeals", "/redaktion", "/datenschutz", "/impressum")
+        static_paths = ("/", "/vergangene-deals", "/ueber-nettodeals", "/redaktion", "/datenschutz", "/impressum")
         urls = [f"  <url><loc>{escape(settings.site_url + path)}</loc></url>" for path in static_paths]
         with connection(settings.db_path) as conn:
             rows = conn.execute(
-                "SELECT id, title, updated_at FROM deals WHERE status = 'published' ORDER BY id"
+                "SELECT id, title, updated_at FROM deals WHERE status IN ('published', 'expired') ORDER BY id"
             ).fetchall()
         for row in rows:
             location = escape(settings.site_url + deal_path(row["id"], row["title"]))
@@ -322,13 +364,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def outbound(deal_id: int):
         with connection(settings.db_path) as conn:
             row = conn.execute(
-                "SELECT affiliate_link FROM deals WHERE id = ? AND status = 'published'",
-                (deal_id,),
+                """SELECT affiliate_link FROM deals WHERE id = ? AND status = 'published'
+                   AND (expires_at IS NULL OR expires_at > ?)""",
+                (deal_id, now_iso()),
             ).fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
             target = normalize_external_url(row["affiliate_link"])
-            if not target:
+            if not target or not is_direct_merchant_url(target):
                 raise HTTPException(status_code=410, detail="Deal-Link ist nicht mehr verfügbar.")
             conn.execute(
                 "UPDATE deals SET click_count = click_count + 1, last_clicked_at = ? WHERE id = ?",
@@ -365,7 +408,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.1.2",
+            "version": "3.2.0",
             "sources": sync_service.configured_sources(),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,
@@ -418,12 +461,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             drafts = conn.execute(
                 "SELECT * FROM deals WHERE status = 'draft' ORDER BY updated_at DESC LIMIT 500"
             ).fetchall()
+            published = conn.execute(
+                "SELECT * FROM deals WHERE status = 'published' ORDER BY expires_at ASC LIMIT 100"
+            ).fetchall()
+            expired = conn.execute(
+                "SELECT * FROM deals WHERE status = 'expired' ORDER BY expired_at DESC LIMIT 100"
+            ).fetchall()
             logs = conn.execute("SELECT * FROM import_logs ORDER BY id DESC LIMIT 25").fetchall()
             counts = conn.execute(
                 "SELECT status, COUNT(*) AS count FROM deals GROUP BY status"
             ).fetchall()
         return {
             "drafts": [dict(row) for row in drafts],
+            "published": [dict(row) for row in published],
+            "expired": [dict(row) for row in expired],
             "logs": [dict(row) for row in logs],
             "counts": {row["status"]: row["count"] for row in counts},
             "sources": sync_service.configured_sources(),
@@ -521,18 +572,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/admin/deals/{deal_id}/publish")
     def publish_deal(request: Request, deal_id: int, csrf: Annotated[str, Form()]):
         _verify_csrf(request, settings, csrf)
+        try:
+            publish_enriched_deal(settings.db_path, deal_id, settings)
+        except ValueError as exc:
+            return HTMLResponse(
+                TEMPLATE_ENV.get_template("admin.html").render(
+                    **admin_context(request, result=None, error=str(exc))
+                ),
+                status_code=422,
+            )
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/deals/{deal_id}/update")
+    def update_deal(
+        request: Request,
+        deal_id: int,
+        csrf: Annotated[str, Form()],
+        shop_name: Annotated[str, Form()],
+        affiliate_link: Annotated[str, Form()],
+        base_price: Annotated[float, Form()],
+        manufacturer_uvp: Annotated[float, Form()] = 0.0,
+        image_url: Annotated[str, Form()] = "",
+        image_source: Annotated[str, Form()] = "",
+        coupon_code: Annotated[str, Form()] = "",
+        coupon_terms: Annotated[str, Form()] = "",
+    ):
+        _verify_csrf(request, settings, csrf)
+        safe_link = normalize_external_url(affiliate_link)
+        safe_image = normalize_external_url(image_url) if image_url else ""
+        if not shop_name.strip() or not is_direct_merchant_url(safe_link) or safe_money(base_price) <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Shop, positiver Preis und direkter HTTPS-Händlerlink sind erforderlich.",
+            )
         with connection(settings.db_path) as conn:
-            row = conn.execute(
-                "SELECT affiliate_link FROM deals WHERE id = ?", (deal_id,)
-            ).fetchone()
-            if not row:
+            if not conn.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,)).fetchone():
                 raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
-            if not normalize_external_url(row["affiliate_link"]):
-                raise HTTPException(
-                    status_code=422, detail="Ein sicherer HTTPS-Link ist erforderlich."
-                )
             conn.execute(
-                "UPDATE deals SET status = 'published', updated_at = ? WHERE id = ?",
+                """
+                UPDATE deals SET shop_name = ?, affiliate_link = ?, link_type = 'affiliate',
+                    base_price = ?, effective_price = ?, manufacturer_uvp = ?, image_url = ?,
+                    image_source = ?, coupon_code = ?, coupon_terms = ?,
+                    enrichment_status = 'pending', updated_at = ?, price_checked_at = ?
+                WHERE id = ?
+                """,
+                (
+                    shop_name.strip(), safe_link, safe_money(base_price), safe_money(base_price),
+                    safe_money(manufacturer_uvp), safe_image, image_source.strip(),
+                    coupon_code.strip(), coupon_terms.strip(), now_iso(), now_iso(), deal_id,
+                ),
+            )
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/deals/{deal_id}/expire")
+    def expire_deal(request: Request, deal_id: int, csrf: Annotated[str, Form()]):
+        _verify_csrf(request, settings, csrf)
+        with connection(settings.db_path) as conn:
+            conn.execute(
+                "UPDATE deals SET status = 'expired', expired_at = ?, updated_at = ? WHERE id = ?",
+                (now_iso(), now_iso(), deal_id),
+            )
+        return RedirectResponse("/admin", status_code=303)
+
+    @app.post("/admin/deals/{deal_id}/reopen")
+    def reopen_deal(request: Request, deal_id: int, csrf: Annotated[str, Form()]):
+        _verify_csrf(request, settings, csrf)
+        with connection(settings.db_path) as conn:
+            conn.execute(
+                "UPDATE deals SET status = 'draft', expired_at = NULL, updated_at = ? WHERE id = ?",
                 (now_iso(), deal_id),
             )
         return RedirectResponse("/admin", status_code=303)
@@ -557,6 +664,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         coupon_discount: Annotated[float, Form()] = 0.0,
         payment_bonus: Annotated[float, Form()] = 0.0,
         coupon_code: Annotated[str, Form()] = "",
+        manufacturer_uvp: Annotated[float, Form()] = 0.0,
+        image_url: Annotated[str, Form()] = "",
+        image_source: Annotated[str, Form()] = "",
+        coupon_terms: Annotated[str, Form()] = "",
         description: Annotated[str, Form()] = "",
     ):
         _verify_csrf(request, settings, csrf)
@@ -581,12 +692,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             shop_name=shop_name,
             affiliate_link=safe_link,
             coupon_code=coupon_code,
+            manufacturer_uvp=safe_money(manufacturer_uvp),
+            image_url=normalize_external_url(image_url) if image_url else "",
+            image_source=image_source,
+            coupon_terms=coupon_terms,
             description=description,
             source="manual",
             source_id=source_id("manual", title, safe_link),
             link_type=link_type,
         )
-        upsert_deal(settings.db_path, candidate.values(status="published"))
+        upsert_deal(settings.db_path, candidate.values(status="draft"))
+        with connection(settings.db_path) as conn:
+            row = conn.execute(
+                "SELECT id FROM deals WHERE source = 'manual' AND source_id = ?",
+                (candidate.source_id,),
+            ).fetchone()
+        if row:
+            publish_enriched_deal(settings.db_path, int(row["id"]), settings)
         return RedirectResponse("/", status_code=303)
 
     return app

@@ -1,3 +1,16 @@
+# NettoDeals 3.2.0 – Automatisierte Redaktion
+
+## Veröffentlichung 3.2.0
+
+- sichere Partnerfeed-Zuordnung für Toppreise-Trendsignale;
+- direkte Händlerziele statt öffentlicher Toppreise-Kaufziele;
+- Produktbilder mit Quellenangabe, Hersteller-UVP und Rabattkennzeichnung;
+- Gutscheinvorschläge samt Bedingungen und Gültigkeit;
+- optionaler YouTube-API-Abruf sowie faktenbasierter NettoDeals-Kurzcheck;
+- automatische 48-Stunden-Laufzeit und öffentliche vergangene Deals;
+- mobile Pflege, manuelles Beenden und erneute Prüfung im Adminbereich;
+- additive SQLite-Migration ohne Löschen vorhandener Deals.
+
 # NettoDeals 3.1.2 – Überarbeitung
 
 ## Mobiler Toppreise-Import 3.1.2

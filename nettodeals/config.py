@@ -55,6 +55,8 @@ class Settings:
     http_timeout: int = 20
     google_trends_enabled: bool = True
     google_trends_url: str = "https://trends.google.com/trending/rss?geo=CH"
+    youtube_api_key: str = ""
+    deal_lifetime_hours: int = 48
 
     auto_sync_enabled: bool = True
     auto_sync_on_start: bool = True
@@ -87,6 +89,8 @@ class Settings:
                 "GOOGLE_TRENDS_URL",
                 "https://trends.google.com/trending/rss?geo=CH",
             ),
+            youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
+            deal_lifetime_hours=_int("DEAL_LIFETIME_HOURS", 48, minimum=1, maximum=720),
             auto_sync_enabled=_bool("AUTO_SYNC_ENABLED", True),
             auto_sync_on_start=_bool("AUTO_SYNC_ON_START", True),
             auto_sync_initial_delay=_int("AUTO_SYNC_INITIAL_DELAY", 30, minimum=1),

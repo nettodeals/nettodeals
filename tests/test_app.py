@@ -194,7 +194,7 @@ def test_admin_imports_android_mhtml_snapshots(client, settings):
         assert conn.execute("SELECT COUNT(*) FROM deals").fetchone()[0] == 55
 
 
-def test_editorial_deal_is_disclosed_without_sponsored_rel(client, settings):
+def test_toppreise_research_link_is_not_public(client, settings):
     candidate = DealCandidate(
         title="Redaktionelles Produkt",
         category="Produkte",
@@ -208,9 +208,7 @@ def test_editorial_deal_is_disclosed_without_sponsored_rel(client, settings):
     upsert_deal(settings.db_path, candidate.values(status="published"))
 
     response = client.get("/")
-    assert "Zum Preisvergleich" in response.text
-    assert "NettoDeals erhält keine Provision" in response.text
-    assert 'rel="nofollow sponsored"' not in response.text
+    assert "Redaktionelles Produkt" not in response.text
 
 
 def test_product_detail_has_canonical_metadata_and_redirects_slug(client, settings):
@@ -218,13 +216,13 @@ def test_product_detail_has_canonical_metadata_and_redirects_slug(client, settin
         title="Kamera für die Schweiz",
         category="Kameras",
         base_price=799,
-        shop_name="Preisvergleich",
-        affiliate_link="https://www.toppreise.ch/preisvergleich/Kameras/test-p7",
-        source="toppreise",
+        shop_name="Swiss Shop",
+        affiliate_link="https://shop.example.test/kamera",
+        source="manual",
         source_id="7",
-        source_name="Toppreise.ch",
-        link_type="editorial",
-        price_type="from",
+        source_name="Swiss Shop",
+        link_type="affiliate",
+        price_type="exact",
     )
     upsert_deal(settings.db_path, candidate.values(status="published"))
     with connection(settings.db_path) as conn:
@@ -235,8 +233,8 @@ def test_product_detail_has_canonical_metadata_and_redirects_slug(client, settin
     detail = client.get(wrong.headers["location"])
     assert detail.status_code == 200
     assert f'<link rel="canonical" href="{settings.site_url}{wrong.headers["location"]}">' in detail.text
-    assert "ab CHF 799.00" in detail.text
-    assert "Toppreise.ch" in detail.text
+    assert "CHF 799.00" in detail.text
+    assert "Swiss Shop" in detail.text
 
 
 def test_seo_endpoints_and_private_noindex_headers(client, settings):

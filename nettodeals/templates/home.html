@@ -76,6 +76,7 @@
       <div class="deal-grid">
         {% for deal in deals %}
         <article class="deal-card">
+          {% if deal.image_url %}<a class="product-image" href="{{ deal.path }}"><img src="{{ deal.image_url }}" alt="{{ deal.title }}" loading="lazy" referrerpolicy="no-referrer"></a>{% endif %}
           <div class="card-topline">
             <span class="shop">{{ deal.display_source }}</span>
             {% if deal.demand_score >= 20 %}
@@ -108,7 +109,9 @@
             <div><small>Aktion oder Gutschein</small><strong>Deal ansehen</strong></div>
             {% endif %}
           </div>
+          {% if deal.uvp_discount_percent > 0 %}<p class="uvp-saving">{{ deal.uvp_discount_percent }} % unter Hersteller-UVP von CHF {{ "%.2f"|format(deal.manufacturer_uvp) }}</p>{% endif %}
           <p class="price-checked">Preis geprüft: {{ deal.checked_display }}</p>
+          <p class="found-at">Gefunden bei <strong>{{ deal.shop_name }}</strong></p>
 
           {% if deal.base_price > 0 and (deal.coupon_discount > 0 or deal.payment_bonus > 0) %}
           <div class="calculation" aria-label="Preisberechnung">
@@ -119,7 +122,7 @@
           {% endif %}
 
           <a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow{% if deal.link_type == 'affiliate' %} sponsored{% endif %}">
-            {% if deal.link_type == 'editorial' %}Zum Preisvergleich{% else %}Zum Angebot{% endif %} <span aria-hidden="true">→</span>
+            Zum Angebot <span aria-hidden="true">→</span>
           </a>
           {% if deal.link_type == 'editorial' %}
           <p class="sponsored-note">Redaktioneller Direktlink · NettoDeals erhält keine Provision.</p>
@@ -165,6 +168,7 @@
     <p>Klare Preise, ruhiges Design, Schweizer Fokus.</p>
     <nav class="footer-links" aria-label="Informationen">
       <a href="/ueber-nettodeals">Über uns</a>
+      <a href="/vergangene-deals">Vergangene Deals</a>
       <a href="/redaktion">Redaktion &amp; Transparenz</a>
       <a href="/datenschutz">Datenschutz</a>
       <a href="/impressum">Impressum</a>

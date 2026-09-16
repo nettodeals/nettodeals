@@ -27,7 +27,7 @@
     <div class="admin-stats">
       <div><strong>{{ counts.get('published', 0) }}</strong><span>Veröffentlicht</span></div>
       <div><strong>{{ counts.get('draft', 0) }}</strong><span>Zu prüfen</span></div>
-      <div><strong>{{ counts.get('archived', 0) }}</strong><span>Archiviert</span></div>
+      <div><strong>{{ counts.get('expired', 0) }}</strong><span>Vergangene Deals</span></div>
       <div><strong>{{ sources.values()|select|list|length }}</strong><span>Aktive Quellen</span></div>
     </div>
 
@@ -39,7 +39,7 @@
       <summary>Toppreise-Auswahl importieren</summary>
       <div class="import-help">
         <p>Speichere zuerst <a href="https://www.toppreise.ch/topprodukte" target="_blank" rel="noopener noreferrer nofollow">Top 100 ↗</a>. Wähle danach bei <a href="https://www.toppreise.ch/neue-toppreise" target="_blank" rel="noopener noreferrer nofollow">Neue Toppreise ↗</a> den Zeitraum <strong>48 Stunden</strong> und speichere auch diese Seite.</p>
-        <p>HTML sowie die von Chrome auf Android erzeugten MHT-/MHTML-Webarchive werden unterstützt. Der Import wertet nur den HTML-Teil aus, übernimmt höchstens 100 Produkte je Datei als redaktionelle Entwürfe und kopiert keine Bilder.</p>
+        <p>HTML sowie Android-MHT-/MHTML-Webarchive werden unterstützt. Toppreise dient nur als internes Trendsignal. Vor der Veröffentlichung muss ein direkter Händlerlink aus einem Partnerfeed gefunden oder von dir ergänzt werden; Bilder werden nicht von Toppreise kopiert.</p>
       </div>
       <form action="/admin/toppreise/import" method="post" enctype="multipart/form-data" class="snapshot-form">
         <input type="hidden" name="csrf" value="{{ csrf_token }}">
@@ -63,6 +63,10 @@
         <label>Gutscheinabzug<input name="coupon_discount" type="number" min="0" max="10000000" step="0.01" value="0"></label>
         <label>Zahlungsbonus<input name="payment_bonus" type="number" min="0" max="10000000" step="0.01" value="0"></label>
         <label>Gutscheincode<input name="coupon_code" maxlength="120"></label>
+        <label>Hersteller-UVP<input name="manufacturer_uvp" type="number" min="0" max="10000000" step="0.01" value="0"></label>
+        <label class="wide">Bild-URL mit Nutzungsrecht<input name="image_url" type="url" maxlength="2048"></label>
+        <label>Bildquelle/Rechtegeber<input name="image_source" maxlength="160"></label>
+        <label class="wide">Gutscheinbedingungen<textarea name="coupon_terms" maxlength="1000" rows="2"></textarea></label>
         <label class="wide">Beschreibung<textarea name="description" maxlength="2000" rows="3"></textarea></label>
         <button class="primary-button" type="submit">Deal veröffentlichen</button>
       </form>
@@ -74,16 +78,32 @@
       <div class="draft-list">
         {% for deal in drafts %}
         <article class="draft-card">
-          <div>
+          <div class="draft-copy">
             <span class="source-label">{{ deal.source }}</span>
             <h3>{{ deal.title }}</h3>
             <p>{{ deal.shop_name }}{% if deal.base_price > 0 %} · CHF {{ "%.2f"|format(deal.effective_price) }}{% endif %}</p>
-            {% if deal.affiliate_link %}<a href="{{ deal.affiliate_link }}" rel="noopener noreferrer nofollow" target="_blank">Link sicher prüfen ↗</a>{% else %}<span class="missing-link">Kein gültiger Link</span>{% endif %}
+            {% if deal.source_url %}<a href="{{ deal.source_url }}" rel="noopener noreferrer nofollow" target="_blank">Signalquelle prüfen ↗</a>{% endif %}
+            {% if deal.enrichment_notes %}<p class="enrichment-note">{{ deal.enrichment_notes }}</p>{% endif %}
+            <details class="deal-editor">
+              <summary>Händlerdaten ergänzen</summary>
+              <form action="/admin/deals/{{ deal.id }}/update" method="post" class="deal-form compact-form">
+                <input type="hidden" name="csrf" value="{{ csrf_token }}">
+                <label>Shop<input name="shop_name" maxlength="120" value="{% if deal.shop_name != 'Preisvergleich' %}{{ deal.shop_name }}{% endif %}" required></label>
+                <label>Endpreis CHF<input name="base_price" type="number" min="0.01" max="10000000" step="0.01" value="{{ deal.base_price }}" required></label>
+                <label class="wide">Direkter HTTPS-Händlerlink<input name="affiliate_link" type="url" maxlength="2048" value="{% if deal.shop_name != 'Preisvergleich' %}{{ deal.affiliate_link }}{% endif %}" required></label>
+                <label>Hersteller-UVP CHF<input name="manufacturer_uvp" type="number" min="0" max="10000000" step="0.01" value="{{ deal.manufacturer_uvp }}"></label>
+                <label>Gutscheincode<input name="coupon_code" maxlength="120" value="{{ deal.coupon_code or '' }}"></label>
+                <label class="wide">Bild-URL mit Nutzungsrecht<input name="image_url" type="url" maxlength="2048" value="{{ deal.image_url or '' }}"></label>
+                <label>Bildquelle/Rechtegeber<input name="image_source" maxlength="160" value="{{ deal.image_source or '' }}"></label>
+                <label class="wide">Gutscheinbedingungen<textarea name="coupon_terms" maxlength="1000" rows="2">{{ deal.coupon_terms or '' }}</textarea></label>
+                <button class="primary-button" type="submit">Daten speichern</button>
+              </form>
+            </details>
           </div>
           <div class="draft-actions">
             <form action="/admin/deals/{{ deal.id }}/publish" method="post">
               <input type="hidden" name="csrf" value="{{ csrf_token }}">
-              <button class="approve-button" type="submit" {% if not deal.affiliate_link %}disabled{% endif %}>Veröffentlichen</button>
+              <button class="approve-button" type="submit">Anreichern &amp; veröffentlichen</button>
             </form>
             <form action="/admin/deals/{{ deal.id }}/delete" method="post">
               <input type="hidden" name="csrf" value="{{ csrf_token }}">
@@ -94,6 +114,24 @@
         {% endfor %}
       </div>
       {% else %}<p class="panel-empty">Keine offenen Entwürfe.</p>{% endif %}
+    </section>
+
+    <section class="admin-panel">
+      <div class="panel-heading"><div><span class="section-kicker">Live</span><h2>Veröffentlichte Deals</h2></div><b>{{ published|length }}</b></div>
+      <div class="draft-list">
+        {% for deal in published %}
+        <article class="draft-card"><div><h3>{{ deal.title }}</h3><p>{{ deal.shop_name }} · CHF {{ "%.2f"|format(deal.effective_price) }} · bis {{ deal.expires_at }}</p></div><div class="draft-actions"><form action="/admin/deals/{{ deal.id }}/expire" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger-button" type="submit">Jetzt beenden</button></form></div></article>
+        {% else %}<p class="panel-empty">Keine aktiven Deals.</p>{% endfor %}
+      </div>
+    </section>
+
+    <section class="admin-panel">
+      <div class="panel-heading"><div><span class="section-kicker">Historie</span><h2>Vergangene Deals</h2></div><b>{{ expired|length }}</b></div>
+      <div class="draft-list">
+        {% for deal in expired %}
+        <article class="draft-card"><div><h3>{{ deal.title }}</h3><p>{{ deal.shop_name }} · zuletzt CHF {{ "%.2f"|format(deal.effective_price) }}</p></div><div class="draft-actions"><form action="/admin/deals/{{ deal.id }}/reopen" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="approve-button" type="submit">Neu prüfen</button></form></div></article>
+        {% else %}<p class="panel-empty">Noch keine vergangenen Deals.</p>{% endfor %}
+      </div>
     </section>
 
     <section class="admin-panel">

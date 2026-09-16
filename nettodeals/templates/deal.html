@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f7f8ff">
   <meta name="description" content="{{ meta_description }}">
-  <meta name="robots" content="index, follow">
+  <meta name="robots" content="{% if deal.is_expired %}index, follow{% else %}index, follow{% endif %}">
   <link rel="canonical" href="{{ canonical_url }}">
   <meta property="og:type" content="article">
   <meta property="og:locale" content="de_CH">
@@ -32,9 +32,11 @@
     <article class="detail-card" itemscope itemtype="https://schema.org/Product">
       <meta itemprop="name" content="{{ deal.title }}">
       <div class="detail-copy">
+        {% if deal.is_expired %}<div class="expired-banner">Dieser Deal ist abgelaufen und dient als Preisreferenz.</div>{% endif %}
+        {% if deal.image_url %}<img class="detail-image" src="{{ deal.image_url }}" alt="{{ deal.title }}" referrerpolicy="no-referrer">{% if deal.image_source %}<small class="image-credit">Bildquelle: {{ deal.image_source }}</small>{% endif %}{% endif %}
         <span class="section-kicker">{{ deal.category }}</span>
         <h1>{{ deal.title }}</h1>
-        {% if deal.description %}<p class="detail-description" itemprop="description">{{ deal.description }}</p>{% endif %}
+        {% if deal.review_summary %}<p class="detail-description" itemprop="description">{{ deal.review_summary }}</p>{% elif deal.description %}<p class="detail-description" itemprop="description">{{ deal.description }}</p>{% endif %}
         <dl class="deal-facts">
           <div><dt>Quelle</dt><dd>{{ deal.display_source }}</dd></div>
           <div><dt>Preis geprüft</dt><dd>{{ deal.checked_display }}</dd></div>
@@ -47,7 +49,9 @@
         <strong>{% if deal.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(deal.effective_price) }}</strong>
         {% else %}<strong>Aktion ansehen</strong>{% endif %}
         {% if deal.coupon_code %}<div class="detail-code"><small>Gutscheincode</small><b>{{ deal.coupon_code }}</b></div>{% endif %}
-        <a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow{% if deal.link_type == 'affiliate' %} sponsored{% endif %}">{% if deal.link_type == 'editorial' %}Preise vergleichen{% else %}Zum Angebot{% endif %}<span aria-hidden="true">→</span></a>
+        {% if deal.uvp_discount_percent > 0 %}<p class="uvp-saving">{{ deal.uvp_discount_percent }} % unter Hersteller-UVP von CHF {{ "%.2f"|format(deal.manufacturer_uvp) }}</p>{% endif %}
+        <p class="found-at">Gefunden bei <strong>{{ deal.shop_name }}</strong></p>
+        {% if not deal.is_expired %}<a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow{% if deal.link_type == 'affiliate' %} sponsored{% endif %}">Zum Angebot<span aria-hidden="true">→</span></a>{% else %}<a class="deal-cta expired-cta" href="/">Aktuelle Deals ansehen</a>{% endif %}
         {% if deal.link_type == 'editorial' %}<p class="sponsored-note">Redaktioneller Direktlink · NettoDeals erhält keine Provision.</p>{% else %}<p class="sponsored-note">Beim Kauf können wir eine Provision erhalten. Dein Preis bleibt gleich.</p>{% endif %}
       </aside>
     </article>
@@ -56,6 +60,14 @@
       <h2>Preishinweis</h2>
       <p>Preise und Verfügbarkeit können sich seit der letzten Prüfung geändert haben. Massgeblich sind die Angaben auf der verlinkten Zielseite. Ein „Ab“-Preis bezeichnet den günstigsten beim Import erkannten Preis und nicht zwingend ein Angebot eines bestimmten Händlers.</p>
     </section>
+
+    {% if deal.youtube_reviews_list %}
+    <section class="detail-note review-links">
+      <h2>Unabhängige Videos auf YouTube</h2>
+      <p>Automatisch zum exakten Produktnamen gefundene externe Beiträge. Auswahl und Aussagen stammen von den jeweiligen Kanälen.</p>
+      <ul>{% for video in deal.youtube_reviews_list %}<li><a href="{{ video.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ video.title }}</a><small>{{ video.channel }}</small></li>{% endfor %}</ul>
+    </section>
+    {% endif %}
 
     {% if related %}
     <section class="related-section" aria-labelledby="related-title">

@@ -1,13 +1,13 @@
-# NettoDeals 3.1.2 professionell auf GitHub übernehmen
+# NettoDeals 3.2.0 professionell auf GitHub übernehmen
 
 Diese Anleitung lässt den produktiven `main`-Branch unverändert, bis Version
-3.1.2 geprüft und ausdrücklich zusammengeführt wurde.
+3.2.0 geprüft und ausdrücklich zusammengeführt wurde.
 
 ## 1. Voraussetzungen
 
 - Git ist lokal installiert.
 - Das Repository `nettodeals/nettodeals` kann geschrieben werden.
-- Das Archiv `nettodeals-v3.1.2.zip` wurde in einen separaten Ordner entpackt.
+- Das Archiv `nettodeals-3.2.0.zip` wurde in einen separaten Ordner entpackt.
 - Die produktive SQLite-Datei und alle Orbit-Umgebungsvariablen wurden gesichert.
 
 Geheimnisse wie `ADMIN_TOKEN`, Awin- oder TradeDoubler-Tokens dürfen niemals in
@@ -21,12 +21,12 @@ git clone https://github.com/nettodeals/nettodeals.git
 cd nettodeals
 git switch main
 git pull --ff-only origin main
-git tag backup-before-v3.1.2
-git push origin backup-before-v3.1.2
-git switch -c release/3.1.2
+git tag backup-before-v3.2.0
+git push origin backup-before-v3.2.0
+git switch -c release/3.2.0
 ```
 
-Kopiere nun den Inhalt des entpackten 3.1.2-Ordners in diesen Arbeitsordner.
+Kopiere nun den Inhalt des entpackten 3.2.0-Ordners in diesen Arbeitsordner.
 Die lokale `.git`-Struktur, eine vorhandene `.env` und Datenbankdateien dürfen
 nicht ersetzt oder gelöscht werden.
 
@@ -47,14 +47,8 @@ können bewusst geprüft werden.
 
 ## 3. Betreiberangaben ausfüllen
 
-Öffne `nettodeals/templates/info.html` und ersetze im Impressum:
-
-- `[Vorname Nachname oder Firma]`
-- `[Strasse und Hausnummer]`
-- `[PLZ und Ort]`
-- `[geschäftliche Kontaktadresse]`
-
-Prüfe anschließend Datenschutz- und Redaktionstext gegen die tatsächlich
+Prüfe die in `nettodeals/templates/info.html` eingetragenen Betreiber- und
+Kontaktdaten sowie Datenschutz- und Redaktionstext gegen die tatsächlich
 verwendeten Hosting-, Analyse- und Affiliate-Dienste.
 
 ## 4. Änderungen prüfen und testen
@@ -86,6 +80,7 @@ Mindestens diese URLs kontrollieren:
 
 - `/`
 - `/admin/login`
+- `/vergangene-deals`
 - `/robots.txt`
 - `/sitemap.xml`
 - `/ueber-nettodeals`
@@ -94,19 +89,20 @@ Mindestens diese URLs kontrollieren:
 - `/impressum`
 - eine veröffentlichte `/deal/{id}/{slug}`-Seite
 
-Zusätzlich zwei echte Toppreise-HTML- oder MHTML-Dateien importieren und kontrollieren, ob
-Titel, „Ab“-Preis, Quelle und Prüfzeitpunkt stimmen.
+Zusätzlich zwei echte Toppreise-HTML- oder MHTML-Dateien importieren. Prüfe, dass
+die Signalquelle im Adminbereich erreichbar ist, ein Toppreise-Link aber nicht
+ohne direktes Händlerangebot veröffentlicht werden kann.
 
 ## 5. Commit und Pull Request
 
 ```bash
 git add --all
 git status --short
-git commit -m "release: prepare NettoDeals 3.1.2"
-git push --set-upstream origin release/3.1.2
+git commit -m "release: prepare NettoDeals 3.2.0"
+git push --set-upstream origin release/3.2.0
 ```
 
-Auf GitHub anschließend einen Pull Request von `release/3.1.2` nach `main`
+Auf GitHub anschließend einen Pull Request von `release/3.2.0` nach `main`
 erstellen. Im Pull Request dokumentieren:
 
 - Datenbankmigrationen;
@@ -125,8 +121,8 @@ Release ist „Squash and merge“ geeignet.
 ```bash
 git switch main
 git pull --ff-only origin main
-git tag -a v3.1.2 -m "NettoDeals 3.1.2"
-git push origin v3.1.2
+git tag -a v3.2.0 -m "NettoDeals 3.2.0"
+git push origin v3.2.0
 ```
 
 In Orbit anschließend `SITE_URL=https://nettodeals.ch` ergänzen und zuerst einen
@@ -144,9 +140,9 @@ https://nettodeals.ch/sitemap.xml
 Danach einen Admin-Login, einen Import, eine Veröffentlichung und einen Neustart
 testen. Die Veröffentlichung darf nach dem Neustart nicht verschwunden sein.
 
-## 7. Rückkehr zu Version 3.0
+## 7. Rückkehr zur vorherigen Version
 
 Wenn ein kritischer Fehler auftritt, in Orbit wieder den vor dem Merge verwendeten
-Commit oder das Tag `backup-before-v3.1.2` ausrollen. Die zuvor gesicherte
+Commit oder das Tag `backup-before-v3.2.0` ausrollen. Die zuvor gesicherte
 SQLite-Datei nur dann zurückspielen, wenn die automatische Migration oder neue
 Daten selbst die Fehlerquelle sind.

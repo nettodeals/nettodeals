@@ -11,6 +11,12 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
+HASH_FIELDS = (
+    "title", "category", "base_price", "coupon_discount", "payment_bonus",
+    "effective_price", "shop_name", "affiliate_link", "link_type", "source_name",
+    "price_type", "coupon_code", "description", "expires_at", "source_url",
+)
+
 
 def now_iso() -> str:
     return datetime.now(UTC).isoformat()
@@ -72,6 +78,18 @@ def init_db(db_path: str) -> None:
                 trend_score REAL NOT NULL DEFAULT 0,
                 click_count INTEGER NOT NULL DEFAULT 0,
                 last_clicked_at TEXT,
+                manufacturer_uvp REAL NOT NULL DEFAULT 0,
+                image_url TEXT NOT NULL DEFAULT '',
+                image_source TEXT NOT NULL DEFAULT '',
+                review_summary TEXT NOT NULL DEFAULT '',
+                youtube_reviews TEXT NOT NULL DEFAULT '[]',
+                coupon_terms TEXT NOT NULL DEFAULT '',
+                coupon_expires_at TEXT,
+                published_at TEXT,
+                expired_at TEXT,
+                enrichment_status TEXT NOT NULL DEFAULT 'pending',
+                enrichment_notes TEXT NOT NULL DEFAULT '',
+                gtin TEXT NOT NULL DEFAULT '',
                 UNIQUE(source, source_id)
             )
             """
@@ -89,6 +107,18 @@ def init_db(db_path: str) -> None:
             "source_name": "TEXT NOT NULL DEFAULT ''",
             "price_type": "TEXT NOT NULL DEFAULT 'exact'",
             "price_checked_at": "TEXT",
+            "manufacturer_uvp": "REAL NOT NULL DEFAULT 0",
+            "image_url": "TEXT NOT NULL DEFAULT ''",
+            "image_source": "TEXT NOT NULL DEFAULT ''",
+            "review_summary": "TEXT NOT NULL DEFAULT ''",
+            "youtube_reviews": "TEXT NOT NULL DEFAULT '[]'",
+            "coupon_terms": "TEXT NOT NULL DEFAULT ''",
+            "coupon_expires_at": "TEXT",
+            "published_at": "TEXT",
+            "expired_at": "TEXT",
+            "enrichment_status": "TEXT NOT NULL DEFAULT 'pending'",
+            "enrichment_notes": "TEXT NOT NULL DEFAULT ''",
+            "gtin": "TEXT NOT NULL DEFAULT ''",
         }
         for name, definition in migrations.items():
             if name not in existing:
@@ -134,6 +164,20 @@ def init_db(db_path: str) -> None:
             "CREATE INDEX IF NOT EXISTS idx_deals_rank ON deals(status, trend_score DESC, click_count DESC)"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_deal_interest_day ON deal_interest_daily(day)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_deals_expiry ON deals(status, expires_at)"
+        )
+        # Releases before 3.2 could publish a Toppreise research URL directly.
+        # These records must be reviewed and assigned to a merchant before going live again.
+        conn.execute(
+            """
+            UPDATE deals SET status = 'draft', enrichment_status = 'needs_input',
+                enrichment_notes = 'Direkter Händlerlink erforderlich.'
+            WHERE status = 'published'
+              AND (affiliate_link LIKE 'https://toppreise.ch/%'
+                   OR affiliate_link LIKE 'https://www.toppreise.ch/%')
+            """
+        )
 
 
 def content_hash(values: dict[str, Any]) -> str:
@@ -162,17 +206,37 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
             "description",
             "expires_at",
             "source_url",
+            "manufacturer_uvp",
+            "image_url",
+            "image_source",
+            "review_summary",
+            "youtube_reviews",
+            "coupon_terms",
+            "coupon_expires_at",
+            "enrichment_status",
+            "enrichment_notes",
+            "gtin",
         )
     }
-    digest = content_hash(material)
+    digest = content_hash({key: material[key] for key in HASH_FIELDS})
     with connection(db_path) as conn:
         existing = conn.execute(
             "SELECT * FROM deals WHERE source = ? AND source_id = ?",
             (values["source"], values["source_id"]),
         ).fetchone()
         if existing:
+            if values["source"] == "toppreise" and "toppreise.ch/" not in str(
+                existing["affiliate_link"]
+            ):
+                # The snapshot remains a research signal. Never replace a reviewed
+                # merchant destination or licensed enrichment with Toppreise data.
+                conn.execute(
+                    "UPDATE deals SET last_seen_at = ? WHERE id = ?",
+                    (timestamp, existing["id"]),
+                )
+                return "unchanged"
             previous_digest = existing["content_hash"] or content_hash(
-                {key: existing[key] for key in material}
+                {key: existing[key] for key in HASH_FIELDS}
             )
             changed = previous_digest != digest
             status = existing["status"]
@@ -185,8 +249,16 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                 status = "draft"
             if not changed and status == existing["status"]:
                 conn.execute(
-                    "UPDATE deals SET last_seen_at = ?, price_checked_at = ? WHERE id = ?",
-                    (timestamp, values.get("price_checked_at", timestamp), existing["id"]),
+                    """
+                    UPDATE deals SET last_seen_at = ?, price_checked_at = ?,
+                        manufacturer_uvp = ?, image_url = ?, image_source = ?, gtin = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        timestamp, values.get("price_checked_at", timestamp),
+                        material["manufacturer_uvp"] or 0, material["image_url"] or "",
+                        material["image_source"] or "", material["gtin"] or "", existing["id"],
+                    ),
                 )
                 return "unchanged"
             conn.execute(
@@ -224,6 +296,21 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                     existing["id"],
                 ),
             )
+            conn.execute(
+                """
+                UPDATE deals SET manufacturer_uvp = ?, image_url = ?, image_source = ?,
+                    review_summary = ?, youtube_reviews = ?, coupon_terms = ?,
+                    coupon_expires_at = ?, enrichment_status = ?, enrichment_notes = ?, gtin = ?
+                WHERE id = ?
+                """,
+                (
+                    material["manufacturer_uvp"], material["image_url"],
+                    material["image_source"], material["review_summary"],
+                    material["youtube_reviews"], material["coupon_terms"],
+                    material["coupon_expires_at"], material["enrichment_status"],
+                    material["enrichment_notes"], material["gtin"], existing["id"],
+                ),
+            )
             return "updated"
 
         conn.execute(
@@ -233,8 +320,11 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                 effective_price, shop_name, affiliate_link, coupon_code,
                 description, link_type, source_name, price_type, price_checked_at, source,
                 source_id, status, created_at, updated_at, expires_at, source_url,
-                last_seen_at, content_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_seen_at, content_hash, manufacturer_uvp, image_url, image_source,
+                review_summary, youtube_reviews, coupon_terms, coupon_expires_at,
+                enrichment_status, enrichment_notes, gtin
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 material["title"],
@@ -260,9 +350,33 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                 material["source_url"],
                 timestamp,
                 digest,
+                material["manufacturer_uvp"] or 0,
+                material["image_url"] or "",
+                material["image_source"] or "",
+                material["review_summary"] or "",
+                material["youtube_reviews"] or "[]",
+                material["coupon_terms"] or "",
+                material["coupon_expires_at"],
+                material["enrichment_status"] or "pending",
+                material["enrichment_notes"] or "",
+                material["gtin"] or "",
             ),
         )
         return "created"
+
+
+def expire_due_deals(db_path: str) -> int:
+    """Move elapsed public deals to the visible expired collection."""
+    timestamp = now_iso()
+    with connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            UPDATE deals SET status = 'expired', expired_at = ?, updated_at = ?
+            WHERE status = 'published' AND expires_at IS NOT NULL AND expires_at <= ?
+            """,
+            (timestamp, timestamp, timestamp),
+        )
+        return cursor.rowcount
 
 
 def archive_unseen(db_path: str, source: str, sync_started_at: str) -> int:
@@ -270,7 +384,7 @@ def archive_unseen(db_path: str, source: str, sync_started_at: str) -> int:
         cursor = conn.execute(
             """
             UPDATE deals SET status = 'archived', updated_at = ?
-            WHERE source = ? AND status != 'archived'
+            WHERE source = ? AND status IN ('draft', 'published')
               AND (last_seen_at IS NULL OR last_seen_at < ?)
             """,
             (now_iso(), source, sync_started_at),
