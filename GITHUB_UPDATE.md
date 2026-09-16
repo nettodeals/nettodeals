@@ -1,13 +1,13 @@
-# NettoDeals 3.1.1 professionell auf GitHub übernehmen
+# NettoDeals 3.1.2 professionell auf GitHub übernehmen
 
 Diese Anleitung lässt den produktiven `main`-Branch unverändert, bis Version
-3.1.1 geprüft und ausdrücklich zusammengeführt wurde.
+3.1.2 geprüft und ausdrücklich zusammengeführt wurde.
 
 ## 1. Voraussetzungen
 
 - Git ist lokal installiert.
 - Das Repository `nettodeals/nettodeals` kann geschrieben werden.
-- Das Archiv `nettodeals-v3.1.1.zip` wurde in einen separaten Ordner entpackt.
+- Das Archiv `nettodeals-v3.1.2.zip` wurde in einen separaten Ordner entpackt.
 - Die produktive SQLite-Datei und alle Orbit-Umgebungsvariablen wurden gesichert.
 
 Geheimnisse wie `ADMIN_TOKEN`, Awin- oder TradeDoubler-Tokens dürfen niemals in
@@ -21,12 +21,12 @@ git clone https://github.com/nettodeals/nettodeals.git
 cd nettodeals
 git switch main
 git pull --ff-only origin main
-git tag backup-before-v3.1.1
-git push origin backup-before-v3.1.1
-git switch -c release/3.1.1
+git tag backup-before-v3.1.2
+git push origin backup-before-v3.1.2
+git switch -c release/3.1.2
 ```
 
-Kopiere nun den Inhalt des entpackten 3.1.1-Ordners in diesen Arbeitsordner.
+Kopiere nun den Inhalt des entpackten 3.1.2-Ordners in diesen Arbeitsordner.
 Die lokale `.git`-Struktur, eine vorhandene `.env` und Datenbankdateien dürfen
 nicht ersetzt oder gelöscht werden.
 
@@ -94,7 +94,7 @@ Mindestens diese URLs kontrollieren:
 - `/impressum`
 - eine veröffentlichte `/deal/{id}/{slug}`-Seite
 
-Zusätzlich zwei echte Toppreise-HTML-Dateien importieren und kontrollieren, ob
+Zusätzlich zwei echte Toppreise-HTML- oder MHTML-Dateien importieren und kontrollieren, ob
 Titel, „Ab“-Preis, Quelle und Prüfzeitpunkt stimmen.
 
 ## 5. Commit und Pull Request
@@ -102,11 +102,11 @@ Titel, „Ab“-Preis, Quelle und Prüfzeitpunkt stimmen.
 ```bash
 git add --all
 git status --short
-git commit -m "release: prepare NettoDeals 3.1.1"
-git push --set-upstream origin release/3.1.1
+git commit -m "release: prepare NettoDeals 3.1.2"
+git push --set-upstream origin release/3.1.2
 ```
 
-Auf GitHub anschließend einen Pull Request von `release/3.1.1` nach `main`
+Auf GitHub anschließend einen Pull Request von `release/3.1.2` nach `main`
 erstellen. Im Pull Request dokumentieren:
 
 - Datenbankmigrationen;
@@ -125,8 +125,8 @@ Release ist „Squash and merge“ geeignet.
 ```bash
 git switch main
 git pull --ff-only origin main
-git tag -a v3.1.1 -m "NettoDeals 3.1.1"
-git push origin v3.1.1
+git tag -a v3.1.2 -m "NettoDeals 3.1.2"
+git push origin v3.1.2
 ```
 
 In Orbit anschließend `SITE_URL=https://nettodeals.ch` ergänzen und zuerst einen
@@ -147,6 +147,6 @@ testen. Die Veröffentlichung darf nach dem Neustart nicht verschwunden sein.
 ## 7. Rückkehr zu Version 3.0
 
 Wenn ein kritischer Fehler auftritt, in Orbit wieder den vor dem Merge verwendeten
-Commit oder das Tag `backup-before-v3.1.1` ausrollen. Die zuvor gesicherte
+Commit oder das Tag `backup-before-v3.1.2` ausrollen. Die zuvor gesicherte
 SQLite-Datei nur dann zurückspielen, wenn die automatische Migration oder neue
 Daten selbst die Fehlerquelle sind.

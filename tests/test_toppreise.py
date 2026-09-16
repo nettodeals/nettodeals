@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from nettodeals.toppreise import parse_snapshot
+from email import policy
+from email.message import EmailMessage
+
+import pytest
+
+from nettodeals.toppreise import SnapshotError, extract_snapshot_html, parse_snapshot
 
 
 def snapshot(*products: tuple[str, str, str, str], period: int | None = None) -> str:
@@ -52,3 +57,48 @@ def test_snapshot_volume_guard_detects_incomplete_page():
         assert "mindestens 50" in str(exc)
     else:
         raise AssertionError("Unvollständiger Snapshot wurde akzeptiert")
+
+
+def mhtml_archive(html: str) -> bytes:
+    archive = EmailMessage()
+    archive["MIME-Version"] = "1.0"
+    archive.set_type("multipart/related")
+    page = EmailMessage()
+    page["Content-Location"] = "https://www.toppreise.ch/topprodukte"
+    page.set_content(html, subtype="html", charset="utf-8", cte="quoted-printable")
+    archive.attach(page)
+    image = EmailMessage()
+    image["Content-Location"] = "https://www.toppreise.ch/logo.png"
+    image.set_content(b"not imported", maintype="image", subtype="png", cte="base64")
+    archive.attach(image)
+    return archive.as_bytes(policy=policy.default)
+
+
+def test_extract_chromium_mhtml_and_parse_product():
+    html = snapshot(("818734", "APPLE AirPods Pro 3", "180.10", "Kopfhoerer"))
+    extracted = extract_snapshot_html(
+        mhtml_archive(html),
+        filename="topprodukte.mht",
+        content_type="multipart/related",
+    )
+
+    assert "APPLE AirPods Pro 3" in extracted
+    result = parse_snapshot(extracted, collection="top100")
+    assert [candidate.source_id for candidate in result.candidates] == ["818734"]
+
+
+def test_extract_mhtml_rejects_archive_without_html():
+    archive = EmailMessage()
+    archive["MIME-Version"] = "1.0"
+    archive.set_type("multipart/related")
+    image = EmailMessage()
+    image.set_content(b"image", maintype="image", subtype="png", cte="base64")
+    archive.attach(image)
+
+    with pytest.raises(SnapshotError, match="kein HTML-Inhalt"):
+        extract_snapshot_html(archive.as_bytes(), filename="snapshot.mhtml")
+
+
+def test_extract_snapshot_rejects_unknown_file_type():
+    with pytest.raises(SnapshotError, match="Erlaubt sind"):
+        extract_snapshot_html(b"<html></html>", filename="snapshot.txt")

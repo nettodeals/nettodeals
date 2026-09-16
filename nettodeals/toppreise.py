@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from email import policy
+from email.parser import BytesParser
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
@@ -12,10 +15,13 @@ from .services import DealCandidate, safe_money
 
 TOP_PRODUCTS_URL = "https://www.toppreise.ch/topprodukte"
 NEW_TOP_PRICES_URL = "https://www.toppreise.ch/neue-toppreise"
-MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024
+MAX_HTML_BYTES = 5 * 1024 * 1024
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_ITEMS_PER_SNAPSHOT = 100
 MIN_TOP100_ITEMS = 50
 MIN_NEW48_ITEMS = 10
+HTML_SUFFIXES = {".htm", ".html"}
+MHTML_SUFFIXES = {".mht", ".mhtml"}
 
 
 class SnapshotError(ValueError):
@@ -26,6 +32,62 @@ class SnapshotError(ValueError):
 class SnapshotResult:
     candidates: list[DealCandidate]
     skipped: int
+
+
+def _decode_html(payload: bytes, charset: str | None = None) -> str:
+    if len(payload) > MAX_HTML_BYTES:
+        raise SnapshotError("Der entpackte HTML-Inhalt ist grösser als 5 MB.")
+    encodings = [charset] if charset else []
+    encodings.extend(["utf-8-sig", "utf-8", "windows-1252"])
+    for encoding in encodings:
+        try:
+            return payload.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return payload.decode("utf-8", errors="replace")
+
+
+def extract_snapshot_html(
+    raw: bytes,
+    *,
+    filename: str | None,
+    content_type: str | None = None,
+) -> str:
+    """Return HTML from a plain HTML file or a Chromium MHTML web archive."""
+    if not raw:
+        raise SnapshotError("Die hochgeladene Datei ist leer.")
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise SnapshotError("Die hochgeladene Datei ist grösser als 20 MB.")
+
+    suffix = Path(filename or "").suffix.lower()
+    media_type = (content_type or "").split(";", 1)[0].strip().lower()
+    is_mhtml = suffix in MHTML_SUFFIXES or media_type in {
+        "application/x-mimearchive",
+        "multipart/related",
+    }
+    if not is_mhtml and suffix not in HTML_SUFFIXES:
+        raise SnapshotError("Erlaubt sind HTML-, HTM-, MHT- und MHTML-Dateien.")
+    if not is_mhtml:
+        return _decode_html(raw)
+
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(raw)
+    except (TypeError, ValueError) as exc:
+        raise SnapshotError("Das MHTML-Webarchiv konnte nicht gelesen werden.") from exc
+    if not message.is_multipart():
+        raise SnapshotError("Die Datei ist kein gültiges MHTML-Webarchiv.")
+
+    for part in message.walk():
+        if part.is_multipart() or part.get_content_type().lower() != "text/html":
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            text_payload = part.get_payload()
+            if not isinstance(text_payload, str):
+                continue
+            payload = text_payload.encode(part.get_content_charset() or "utf-8", errors="replace")
+        return _decode_html(payload, part.get_content_charset())
+    raise SnapshotError("Im MHTML-Webarchiv wurde kein HTML-Inhalt gefunden.")
 
 
 class _ToppreiseHTMLParser(HTMLParser):

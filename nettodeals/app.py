@@ -39,10 +39,11 @@ from .security import (
 from .seo import deal_path, display_datetime, slugify
 from .services import DealCandidate, SyncService, safe_money, source_id
 from .toppreise import (
-    MAX_SNAPSHOT_BYTES,
+    MAX_UPLOAD_BYTES,
     MIN_NEW48_ITEMS,
     MIN_TOP100_ITEMS,
     SnapshotError,
+    extract_snapshot_html,
     parse_snapshot,
 )
 from .trends import trend_cache_age_seconds
@@ -141,7 +142,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.1.1",
+        version="3.1.2",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -364,7 +365,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.1.1",
+            "version": "3.1.2",
             "sources": sync_service.configured_sources(),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,
@@ -459,14 +460,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 (top100_file, "top100", "Top 100"),
                 (new48_file, "new48", "Neue Toppreise (48 Stunden)"),
             ):
-                raw = await upload.read(MAX_SNAPSHOT_BYTES + 1)
-                if len(raw) > MAX_SNAPSHOT_BYTES:
-                    raise SnapshotError(f"Die Datei «{label}» ist grösser als 5 MB.")
-                if not raw:
-                    raise SnapshotError(f"Die Datei «{label}» ist leer.")
+                raw = await upload.read(MAX_UPLOAD_BYTES + 1)
+                if len(raw) > MAX_UPLOAD_BYTES:
+                    raise SnapshotError(f"Die Datei «{label}» ist grösser als 20 MB.")
+                html = extract_snapshot_html(
+                    raw,
+                    filename=upload.filename,
+                    content_type=upload.content_type,
+                )
                 minimum_items = MIN_TOP100_ITEMS if collection == "top100" else MIN_NEW48_ITEMS
                 parsed = parse_snapshot(
-                    raw.decode("utf-8", errors="replace"),
+                    html,
                     collection=collection,
                     minimum_items=minimum_items,
                 )

@@ -38,13 +38,13 @@
     <details class="admin-panel" open>
       <summary>Toppreise-Auswahl importieren</summary>
       <div class="import-help">
-        <p>Speichere zuerst <a href="https://www.toppreise.ch/topprodukte" target="_blank" rel="noopener noreferrer nofollow">Top 100 ↗</a>. Wähle danach bei <a href="https://www.toppreise.ch/neue-toppreise" target="_blank" rel="noopener noreferrer nofollow">Neue Toppreise ↗</a> den Zeitraum <strong>48 Stunden</strong> und speichere auch diese Seite als HTML.</p>
-        <p>Der Import übernimmt höchstens 100 Produkte je Datei als redaktionelle Entwürfe. Bilder werden nicht kopiert; veröffentlichen musst du jeden Eintrag selbst.</p>
+        <p>Speichere zuerst <a href="https://www.toppreise.ch/topprodukte" target="_blank" rel="noopener noreferrer nofollow">Top 100 ↗</a>. Wähle danach bei <a href="https://www.toppreise.ch/neue-toppreise" target="_blank" rel="noopener noreferrer nofollow">Neue Toppreise ↗</a> den Zeitraum <strong>48 Stunden</strong> und speichere auch diese Seite.</p>
+        <p>HTML sowie die von Chrome auf Android erzeugten MHT-/MHTML-Webarchive werden unterstützt. Der Import wertet nur den HTML-Teil aus, übernimmt höchstens 100 Produkte je Datei als redaktionelle Entwürfe und kopiert keine Bilder.</p>
       </div>
       <form action="/admin/toppreise/import" method="post" enctype="multipart/form-data" class="snapshot-form">
         <input type="hidden" name="csrf" value="{{ csrf_token }}">
-        <label>HTML-Datei „Top 100“<input name="top100_file" type="file" accept=".html,.htm,text/html" required></label>
-        <label>HTML-Datei „Neue Toppreise – 48 Stunden“<input name="new48_file" type="file" accept=".html,.htm,text/html" required></label>
+        <label>HTML/MHTML „Top 100“<input name="top100_file" type="file" accept=".html,.htm,.mht,.mhtml,text/html,multipart/related,application/x-mimearchive" required></label>
+        <label>HTML/MHTML „Neue Toppreise – 48 Stunden“<input name="new48_file" type="file" accept=".html,.htm,.mht,.mhtml,text/html,multipart/related,application/x-mimearchive" required></label>
         <label class="confirm-row"><input name="confirm_48" type="checkbox" value="yes" required><span>Ich habe vor dem Speichern der zweiten Seite „48 Stunden“ ausgewählt.</span></label>
         <button class="primary-button" type="submit">Als Entwürfe importieren</button>
       </form>
