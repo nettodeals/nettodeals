@@ -1,4 +1,16 @@
-# NettoDeals 3.1.1 – Überarbeitung
+# NettoDeals 3.1.2 – Überarbeitung
+
+## Mobiler Toppreise-Import 3.1.2
+
+- Native Unterstützung für `.mht`- und `.mhtml`-Webarchive, wie sie Chrome auf
+  Android beim Speichern einer vollständigen Seite erzeugt.
+- MIME-Archive werden mit der Python-Standardbibliothek verarbeitet; ausgewertet
+  wird ausschliesslich der erste `text/html`-Teil. Bilder und andere eingebettete
+  Ressourcen werden weder gespeichert noch ausgeführt.
+- Webarchive sind auf 20 MB begrenzt, der extrahierte HTML-Inhalt weiterhin auf
+  5 MB. Ungültige Archive und nicht erlaubte Dateitypen liefern verständliche
+  Fehlermeldungen.
+- Der mobile Dateiauswahldialog akzeptiert HTML, HTM, MHT und MHTML.
 
 ## SEO-, Vertrauens- und Qualitätsupdate 3.1.1
 
@@ -47,7 +59,7 @@
 | Frontend | Keine Tailwind-CDN-Laufzeit; lokale CSS/JS-Assets, CSP, mobile Karten, horizontale Filterchips, 44-px-Paging-Ziele und klare Affiliate-Kennzeichnung. Die dezente Blau/Violett/Pink/Cyan-Aurora ist eigenständig in CSS umgesetzt und verwendet weder fremde Logos noch Markenassets. |
 | Social Media | X, Instagram und TikTok sind als dezente, tastaturbedienbare Footer-Links mit mobilgerechten Touch-Zielen eingebunden; externe Seiten öffnen sicher in einem neuen Tab. |
 | Betrieb | Python 3.12 in Anwendung und Container, Non-root-Container, persistentes Volume, Healthcheck und dokumentierte Umgebungsvariablen. |
-| Qualität | Reproduzierbar gepinnte Pakete, 24 Tests, Ruff, Bandit, `pip-audit` und GitHub-Actions-CI. |
+| Qualität | Reproduzierbar gepinnte Pakete, 28 Tests, Ruff, Bandit, `pip-audit` und GitHub-Actions-CI. |
 
 ## Neue Trendsignale
 

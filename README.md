@@ -1,4 +1,4 @@
-# NettoDeals.ch 3.1.1 🇨🇭
+# NettoDeals.ch 3.1.2 🇨🇭
 
 Ein mobiles, selbst gehostetes Elektronik-Deal-Portal für die Schweiz. NettoDeals
 berechnet den Effektivpreis nach festen Gutscheinen und Zahlungsboni, importiert
@@ -34,6 +34,13 @@ Die vollständige Zuordnung der behobenen Befunde und Upgrade-Hinweise steht in
 - unveränderte Importe aktualisieren nur Prüfzeitpunkt und Sichtbarkeit, nicht das
   SEO-Änderungsdatum eines Angebots.
 
+## Neu in Version 3.1.2
+
+- direkter Import von `.mht`- und `.mhtml`-Webarchiven aus Chrome für Android;
+- sichere Extraktion ausschliesslich des eingebetteten HTML-Dokuments;
+- getrennte Grössenlimits von 20 MB für das Webarchiv und 5 MB für HTML;
+- mobilgerechte Dateiauswahl für HTML, HTM, MHT und MHTML.
+
 ## Kostenlose Trendsuche für die Schweiz
 
 Direktes Scraping von Toppreise ist für Serveranwendungen unzuverlässig und kann
@@ -53,9 +60,10 @@ allgemeine Nachrichten-Suchbegriffe beeinflussen die Sortierung daher kaum.
 Solange noch keine Affiliate-Programme freigeschaltet sind, kann der Adminbereich
 einen redaktionellen Startbestand aus zwei Toppreise-Ansichten übernehmen:
 
-1. `https://www.toppreise.ch/topprodukte` im Browser öffnen und als HTML speichern;
+1. `https://www.toppreise.ch/topprodukte` im Browser öffnen und als HTML oder
+   auf Android als MHT/MHTML-Webarchiv speichern;
 2. unter `https://www.toppreise.ch/neue-toppreise` **48 Stunden** auswählen und
-   auch diese Ansicht als HTML speichern;
+   auch diese Ansicht als HTML oder MHT/MHTML speichern;
 3. beide Dateien unter **Toppreise-Auswahl importieren** hochladen.
 
 Der Import ist bewusst manuell, weil direkte Serverabrufe von Toppreise je nach

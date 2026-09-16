@@ -8,7 +8,7 @@ from nettodeals.app import create_app
 from nettodeals.db import connection, upsert_deal
 from nettodeals.security import COOKIE_NAME, csrf_token
 from nettodeals.services import DealCandidate
-from tests.test_toppreise import snapshot
+from tests.test_toppreise import mhtml_archive, snapshot
 
 
 def login(client, settings):
@@ -167,6 +167,31 @@ def test_admin_imports_toppreise_snapshots_as_unique_drafts(client, settings):
     assert len(deals) == 55
     assert all(row["status"] == "draft" for row in deals)
     assert all(row["link_type"] == "editorial" for row in deals)
+
+
+def test_admin_imports_android_mhtml_snapshots(client, settings):
+    csrf = login(client, settings)
+    top100 = snapshot(
+        *((str(index), f"MHT Produkt {index}", "89.90", "Elektronik") for index in range(1, 51))
+    )
+    new48 = snapshot(
+        *((str(index), f"MHT Produkt {index}", "89.90", "Elektronik") for index in range(46, 56)),
+        period=48,
+    )
+
+    response = client.post(
+        "/admin/toppreise/import",
+        data={"csrf": csrf, "confirm_48": "yes"},
+        files={
+            "top100_file": ("top100.mht", mhtml_archive(top100), "multipart/related"),
+            "new48_file": ("new48.mhtml", mhtml_archive(new48), "application/x-mimearchive"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert "55 eindeutige Produkte übernommen" in response.text
+    with connection(settings.db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM deals").fetchone()[0] == 55
 
 
 def test_editorial_deal_is_disclosed_without_sponsored_rel(client, settings):
