@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin · NettoDeals</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v=3.3.0">
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -35,11 +35,13 @@
     {% if result %}<div class="notice success" role="status">Synchronisierung beendet: {{ result.sources|length }} Quellen verarbeitet.</div>{% endif %}
     {% if import_result %}<div class="notice success" role="status">{{ import_result }}</div>{% endif %}
 
+    <section class="admin-panel"><span class="section-kicker">Neu: ohne Affiliate-Partner</span><h2>Redaktion &amp; Social</h2><p>Steckbriefe sofort oder nach Zeitplan publizieren. Eigene Grafiken und Texte für X, Instagram und TikTok werden automatisch vorbereitet – das Posten erfolgt manuell.</p><a class="primary-button editorial-link" href="/admin/redaktion">Kostenlose Redaktion öffnen →</a></section>
+
     <details class="admin-panel" open>
       <summary>Toppreise-Auswahl importieren</summary>
       <div class="import-help">
         <p>Speichere zuerst <a href="https://www.toppreise.ch/topprodukte" target="_blank" rel="noopener noreferrer nofollow">Top 100 ↗</a>. Wähle danach bei <a href="https://www.toppreise.ch/neue-toppreise" target="_blank" rel="noopener noreferrer nofollow">Neue Toppreise ↗</a> den Zeitraum <strong>48 Stunden</strong> und speichere auch diese Seite.</p>
-        <p>HTML sowie Android-MHT-/MHTML-Webarchive werden unterstützt. Toppreise dient nur als internes Trendsignal. Vor der Veröffentlichung muss ein direkter Händlerlink aus einem Partnerfeed gefunden oder von dir ergänzt werden; Bilder werden nicht von Toppreise kopiert.</p>
+        <p>HTML sowie Android-MHT-/MHTML-Webarchive werden unterstützt. Für konkrete Deals ist ein Händlerlink nötig, für einen redaktionellen Steckbrief nicht. Unter „Redaktion &amp; Social“ kannst du importierte Titel als Steckbriefe vormerken. Importpreise und Toppreise-Bilder werden dabei nicht veröffentlicht. Beachte die Nutzungsrechte der Quelle.</p>
       </div>
       <form action="/admin/toppreise/import" method="post" enctype="multipart/form-data" class="snapshot-form">
         <input type="hidden" name="csrf" value="{{ csrf_token }}">
@@ -57,7 +59,7 @@
         <label>Titel<input name="title" maxlength="300" required></label>
         <label>Shop<input name="shop_name" maxlength="120" required></label>
         <label class="wide">HTTPS-Ziel-Link<input name="affiliate_link" type="url" maxlength="2048" required></label>
-        <label>Link-Kennzeichnung<select name="link_type"><option value="affiliate">Affiliate-Link</option><option value="editorial">Redaktionell, provisionsfrei</option></select></label>
+        <label>Link-Kennzeichnung<select name="link_type"><option value="editorial">Redaktionell, provisionsfrei</option><option value="affiliate">Affiliate-Link</option></select></label>
         <label>Kategorie<input name="category" value="Deals" maxlength="80"></label>
         <label>Basispreis<input name="base_price" type="number" min="0" max="10000000" step="0.01" value="0"></label>
         <label>Gutscheinabzug<input name="coupon_discount" type="number" min="0" max="10000000" step="0.01" value="0"></label>
@@ -81,6 +83,7 @@
           <div class="draft-copy">
             <span class="source-label">{{ deal.source }}</span>
             <h3>{{ deal.title }}</h3>
+            <p><a href="/admin/redaktion?deal_id={{ deal.id }}">Als Steckbrief veröffentlichen – ohne Händler/Affiliate →</a></p>
             <p>{{ deal.shop_name }}{% if deal.base_price > 0 %} · CHF {{ "%.2f"|format(deal.effective_price) }}{% endif %}</p>
             {% if deal.source_url %}<a href="{{ deal.source_url }}" rel="noopener noreferrer nofollow" target="_blank">Signalquelle prüfen ↗</a>{% endif %}
             {% if deal.enrichment_notes %}<p class="enrichment-note">{{ deal.enrichment_notes }}</p>{% endif %}
@@ -92,6 +95,7 @@
                 <label>Endpreis CHF<input name="base_price" type="number" min="0.01" max="10000000" step="0.01" value="{{ deal.base_price }}" required></label>
                 <label class="wide">Direkter HTTPS-Händlerlink<input name="affiliate_link" type="url" maxlength="2048" value="{% if deal.shop_name != 'Preisvergleich' %}{{ deal.affiliate_link }}{% endif %}" required></label>
                 <label>Hersteller-UVP CHF<input name="manufacturer_uvp" type="number" min="0" max="10000000" step="0.01" value="{{ deal.manufacturer_uvp }}"></label>
+                <label>Linkart<select name="link_type"><option value="editorial">Provisionsfreier Händlerlink</option><option value="affiliate" {% if deal.link_type == 'affiliate' %}selected{% endif %}>Affiliate-Link</option></select></label>
                 <label>Gutscheincode<input name="coupon_code" maxlength="120" value="{{ deal.coupon_code or '' }}"></label>
                 <label class="wide">Bild-URL mit Nutzungsrecht<input name="image_url" type="url" maxlength="2048" value="{{ deal.image_url or '' }}"></label>
                 <label>Bildquelle/Rechtegeber<input name="image_source" maxlength="160" value="{{ deal.image_source or '' }}"></label>
@@ -103,7 +107,7 @@
           <div class="draft-actions">
             <form action="/admin/deals/{{ deal.id }}/publish" method="post">
               <input type="hidden" name="csrf" value="{{ csrf_token }}">
-              <button class="approve-button" type="submit">Anreichern &amp; veröffentlichen</button>
+              <button class="approve-button" type="submit">Als konkreten Deal veröffentlichen</button>
             </form>
             <form action="/admin/deals/{{ deal.id }}/delete" method="post">
               <input type="hidden" name="csrf" value="{{ csrf_token }}">

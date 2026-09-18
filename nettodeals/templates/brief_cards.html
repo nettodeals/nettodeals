@@ -1,0 +1,10 @@
+<div class="deal-grid brief-grid">
+{% for brief in briefs %}<article class="deal-card brief-card">
+<a href="{{ brief.path }}"><img class="brief-image" src="/steckbrief-bild/{{ brief.id }}.png" alt="Textkarte: {{ brief.title }}" width="1080" height="1350" loading="lazy"></a>
+<span class="source-label">Produkt-Steckbrief · {{ brief.category }}</span>
+<h3><a href="{{ brief.path }}">{{ brief.title }}</a></h3>
+<p class="description">{{ brief.summary[:220] }}{% if brief.summary|length > 220 %}…{% endif %}</p>
+<p class="price-checked">Quellenstand: {{ brief.source_display }}{% if brief.outdated %} · Historischer Eintrag{% endif %}</p>
+<a class="deal-cta" href="{{ brief.path }}">Steckbrief lesen →</a>
+</article>{% else %}<p>Noch keine redaktionellen Steckbriefe.</p>{% endfor %}
+</div>

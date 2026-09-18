@@ -1,3 +1,17 @@
+# NettoDeals 3.3.0 – Kostenlose Produktredaktion
+
+- Separater Veröffentlichungsweg ohne Affiliate-Partner oder bestätigten Kaufpreis.
+- Quellenbasierte, vorlagenbasierte Steckbriefe statt erfundener Tests und Rabatte.
+- Sofortpublikation und persistenter 6-/12-/24-Stunden-Zeitplan mit Freigabewarteschlange.
+- Auswahl vorhandener importierter Produkte ohne Übernahme fremder Produktbilder.
+- Quellenalter maximal sieben Tage beim Publizieren; ältere Artikel bleiben als
+  zeitlich eingeordnete redaktionelle Inhalte zugänglich.
+- Authentifizierte Social-Downloads mit Text und lokalen PNG-Karten, kein
+  kostenpflichtiger Publishing-Dienst und kein automatischer externer Upload.
+- Öffentliche Artikel, Startseitenkarten, Canonicals, Social-Metadaten und Sitemap.
+- Additive Datenbankmigration; bestehende Deal-Prüfung und Deal-Ablauf bleiben erhalten.
+- Normale Händlerlinks sind bei manuellen Deals ausdrücklich auswählbar.
+
 # NettoDeals 3.2.0 – Automatisierte Redaktion
 
 ## Veröffentlichung 3.2.0

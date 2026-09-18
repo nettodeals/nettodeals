@@ -167,6 +167,43 @@ def init_db(db_path: str) -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_deals_expiry ON deals(status, expires_at)"
         )
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS briefs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_deal_id INTEGER UNIQUE REFERENCES deals(id) ON DELETE SET NULL,
+                title TEXT NOT NULL,
+                category TEXT NOT NULL,
+                facts TEXT NOT NULL DEFAULT '',
+                source_url TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                source_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                created_at TEXT NOT NULL,
+                published_at TEXT,
+                summary TEXT NOT NULL DEFAULT '',
+                fingerprint TEXT NOT NULL UNIQUE
+            );
+            CREATE INDEX IF NOT EXISTS idx_briefs_queue ON briefs(status, id);
+            CREATE TABLE IF NOT EXISTS editorial_schedule (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                enabled INTEGER NOT NULL DEFAULT 0,
+                interval_hours INTEGER NOT NULL DEFAULT 12,
+                next_run_at TEXT,
+                last_run_at TEXT,
+                last_message TEXT NOT NULL DEFAULT 'Noch nicht aktiviert.'
+            );
+            INSERT OR IGNORE INTO editorial_schedule(id) VALUES (1);
+            CREATE TABLE IF NOT EXISTS social_exports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                brief_id INTEGER NOT NULL REFERENCES briefs(id) ON DELETE CASCADE,
+                platform TEXT NOT NULL,
+                caption TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'prepared',
+                created_at TEXT NOT NULL,
+                shared_at TEXT,
+                UNIQUE(brief_id, platform)
+            );
+        """)
         # Releases before 3.2 could publish a Toppreise research URL directly.
         # These records must be reviewed and assigned to a merchant before going live again.
         conn.execute(

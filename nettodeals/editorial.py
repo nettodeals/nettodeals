@@ -100,7 +100,7 @@ def _summary(row: dict[str, Any]) -> str:
         f"{row.get('category') or 'Produkte'}."
     ]
     if price and row.get("shop_name"):
-        parts.append(f"Das verifizierte Angebot bei {row['shop_name']} liegt bei CHF {price:.2f}.")
+        parts.append(f"Der hinterlegte Angebotspreis bei {row['shop_name']} beträgt CHF {price:.2f}.")
     if uvp > price > 0:
         discount = round((uvp - price) / uvp * 100)
         parts.append(f"Das entspricht rund {discount}% unter der Hersteller-UVP von CHF {uvp:.2f}.")
