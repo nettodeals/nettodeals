@@ -1,0 +1,16 @@
+<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ brief.title }} – Steckbrief | NettoDeals</title><meta name="description" content="{{ brief.summary[:155] }}">
+<link rel="canonical" href="{{ canonical_url }}"><meta property="og:type" content="article"><meta property="og:title" content="{{ brief.title }} – Produkt-Steckbrief">
+<meta property="og:description" content="{{ brief.summary[:155] }}"><meta property="og:url" content="{{ canonical_url }}"><meta property="og:image" content="{{ image_url }}"><meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="/static/app.css?v=3.3.0"></head>
+<body><header class="site-header"><a class="brand" href="/">NettoDeals <small>CH</small></a><a href="/steckbriefe">← Alle Steckbriefe</a></header>
+<main class="detail-main"><article class="detail-card" itemscope itemtype="https://schema.org/Article">
+<div class="detail-copy"><span class="section-kicker">Produkt-Steckbrief · {{ brief.category }}</span><h1 itemprop="headline">{{ brief.title }}</h1>
+<p class="detail-description" itemprop="description">{{ brief.summary }}</p>
+{% if brief.outdated %}<p class="expired-banner">Historischer Steckbrief: Die Quelle wurde seit mehr als sieben Tagen nicht erneut geprüft.</p>{% endif %}
+{% if brief.fact_lines %}<h2>Auf einen Blick</h2><ul>{% for fact in brief.fact_lines %}<li>{{ fact }}</li>{% endfor %}</ul>{% endif %}
+<h2>Vor dem Kauf prüfen</h2><ul><li>Exakte Modellvariante, Ausstattung und Lieferumfang vergleichen.</li><li>CHF-Endpreis inklusive Versand und allfälliger Importkosten prüfen.</li><li>Lieferbarkeit, Garantie und Rückgabebedingungen beim Händler kontrollieren.</li></ul>
+<dl class="deal-facts"><div><dt>Quelle</dt><dd><a href="{{ brief.source_url }}" rel="noopener noreferrer nofollow" target="_blank">{{ brief.source_name }} ↗</a></dd></div><div><dt>Datenstand</dt><dd>{{ brief.source_display }}</dd></div><div><dt>Einordnung</dt><dd>Redaktionell, provisionsfrei · kein bestätigtes Angebot</dd></div></dl>
+<p class="sponsored-note">Automatisch aus freigegebenen Angaben formulierter Steckbrief. Keine eigene Testerfahrung, keine Preis- oder Verfügbarkeitsgarantie.</p>
+</div><aside><img class="brief-image" src="{{ image_url }}" alt="Eigene Textgrafik zum Steckbrief" width="1080" height="1350"><p class="sponsored-note">Eigene Textkarte, kein Produktfoto.</p></aside>
+</article></main></body></html>

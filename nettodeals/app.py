@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 from contextlib import asynccontextmanager, suppress
 from html import escape
@@ -23,6 +24,8 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .brief_routes import register_brief_routes
+from .briefs import brief_dict, brief_path, run_schedule
 from .config import Settings
 from .db import connection, expire_due_deals, init_db, log_import, now_iso, upsert_deal
 from .editorial import is_direct_merchant_url
@@ -149,13 +152,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await asyncio.to_thread(expire_due_deals, settings.db_path)
             await asyncio.sleep(600)
 
+    async def editorial_loop() -> None:
+        while True:
+            try:
+                await asyncio.to_thread(run_schedule, settings.db_path, settings.site_url)
+            except (sqlite3.Error, ValueError):
+                logging.getLogger(__name__).exception("Editorial scheduler failed; retry in 60s")
+            await asyncio.sleep(60)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         init_db(settings.db_path)
         task = asyncio.create_task(auto_sync_loop()) if settings.auto_sync_enabled else None
         expiry_task = asyncio.create_task(expiry_loop())
+        editorial_task = asyncio.create_task(editorial_loop())
         yield
-        for background_task in (task, expiry_task):
+        for background_task in (task, expiry_task, editorial_task):
             if background_task:
                 background_task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -164,7 +176,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.2.0",
+        version="3.3.0",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -172,6 +184,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.sync_service = sync_service
+    register_brief_routes(app, settings, _render, _session_cookie, _verify_csrf)
     if settings.allowed_hosts != ("*",):
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -217,6 +230,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             category_text,
         ]
         with connection(settings.db_path) as conn:
+            brief_rows = conn.execute(
+                """SELECT * FROM briefs WHERE status='published'
+                   AND (?='' OR title LIKE ? OR facts LIKE ?)
+                   AND (?='' OR category=?)
+                   ORDER BY published_at DESC, id DESC LIMIT 6""",
+                (query_text, needle, needle, category_text, category_text),
+            ).fetchall()
+            brief_total = conn.execute("SELECT count(*) FROM briefs WHERE status='published'").fetchone()[0]
             total_matches = int(conn.execute(HOME_COUNT_QUERY, filter_params).fetchone()[0])
             page_count = max(1, (total_matches + PAGE_SIZE - 1) // PAGE_SIZE)
             page = min(page, page_count)
@@ -246,6 +267,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         filtered = bool(query_text or category_text or page > 1)
         return _render(
             "home.html",
+            briefs=[brief_dict(row) for row in brief_rows],
+            brief_total=brief_total,
             deals=deals,
             categories=[dict(row) for row in categories],
             totals=dict(totals) if totals else {"deals": 0, "clicks": 0, "updated_at": ""},
@@ -318,12 +341,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/sitemap.xml")
     def sitemap():
-        static_paths = ("/", "/vergangene-deals", "/ueber-nettodeals", "/redaktion", "/datenschutz", "/impressum")
+        static_paths = ("/", "/steckbriefe", "/vergangene-deals", "/ueber-nettodeals", "/redaktion", "/datenschutz", "/impressum")
         urls = [f"  <url><loc>{escape(settings.site_url + path)}</loc></url>" for path in static_paths]
         with connection(settings.db_path) as conn:
             rows = conn.execute(
                 "SELECT id, title, updated_at FROM deals WHERE status IN ('published', 'expired') ORDER BY id"
             ).fetchall()
+            brief_rows = conn.execute("SELECT * FROM briefs WHERE status='published' ORDER BY id").fetchall()
+        for brief in brief_rows:
+            location = escape(settings.site_url + brief_path(brief["id"], brief["title"]))
+            urls.append(f"  <url><loc>{location}</loc><lastmod>{escape(brief['published_at'][:10])}</lastmod></url>")
         for row in rows:
             location = escape(settings.site_url + deal_path(row["id"], row["title"]))
             last_modified = escape(str(row["updated_at"])[:10])
@@ -408,7 +435,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.2.0",
+            "version": "3.3.0",
             "sources": sync_service.configured_sources(),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,
@@ -596,6 +623,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         image_source: Annotated[str, Form()] = "",
         coupon_code: Annotated[str, Form()] = "",
         coupon_terms: Annotated[str, Form()] = "",
+        link_type: Annotated[str, Form()] = "editorial",
     ):
         _verify_csrf(request, settings, csrf)
         safe_link = normalize_external_url(affiliate_link)
@@ -610,14 +638,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
             conn.execute(
                 """
-                UPDATE deals SET shop_name = ?, affiliate_link = ?, link_type = 'affiliate',
+                UPDATE deals SET shop_name = ?, affiliate_link = ?, link_type = ?,
                     base_price = ?, effective_price = ?, manufacturer_uvp = ?, image_url = ?,
                     image_source = ?, coupon_code = ?, coupon_terms = ?,
                     enrichment_status = 'pending', updated_at = ?, price_checked_at = ?
                 WHERE id = ?
                 """,
                 (
-                    shop_name.strip(), safe_link, safe_money(base_price), safe_money(base_price),
+                    shop_name.strip(), safe_link, "affiliate" if link_type == "affiliate" else "editorial",
+                    safe_money(base_price), safe_money(base_price),
                     safe_money(manufacturer_uvp), safe_image, image_source.strip(),
                     coupon_code.strip(), coupon_terms.strip(), now_iso(), now_iso(), deal_id,
                 ),

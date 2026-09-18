@@ -13,3 +13,4 @@ htmlcov/
 .idea/
 .vscode/
 .test-deps/
+pytest-of-root/

@@ -1,0 +1,8 @@
+<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Produkt-Steckbriefe für die Schweiz – NettoDeals</title><meta name="description" content="Kurze redaktionelle Produkt-Steckbriefe mit Quellen und Datenstand – unabhängig von Affiliate-Partnerschaften.">
+<link rel="canonical" href="{{ canonical_url }}"><link rel="stylesheet" href="/static/app.css?v=3.3.0"></head>
+<body><header class="site-header"><a class="brand" href="/">NettoDeals <small>CH</small></a><a href="/">← Startseite</a></header>
+<main class="archive-main"><span class="section-kicker">Redaktion</span><h1>Produkt-Steckbriefe</h1><p>Quellenbasierte Kurzporträts. Kein eigener Produkttest und kein Versprechen eines aktuellen Rabatts.</p>
+{% include 'brief_cards.html' %}
+{% if pages > 1 %}<nav class="pagination" aria-label="Seiten">{% if page > 1 %}<a href="?page={{ page - 1 }}" rel="prev">Zurück</a>{% endif %}<span>Seite {{ page }} von {{ pages }}</span>{% if page < pages %}<a href="?page={{ page + 1 }}" rel="next">Weiter</a>{% endif %}</nav>{% endif %}
+</main></body></html>

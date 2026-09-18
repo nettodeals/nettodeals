@@ -1,4 +1,23 @@
-# NettoDeals.ch 3.2.0 🇨🇭
+# NettoDeals.ch 3.3.0 🇨🇭
+
+## Kostenlose Redaktion ohne Affiliate-Partner
+
+Unter `/admin/redaktion` lassen sich kurze Produktsteckbriefe sofort oder alle
+6, 12 oder 24 Stunden veröffentlichen. Voraussetzung ist ein freigegebener Vorrat
+mit Quellenangabe und tatsächlich geprüftem Quelldatum. Kein Publishing-Abo,
+keine Social-API und keine zusätzlichen Umgebungsvariablen erforderlich.
+
+Steckbriefe sind ausdrücklich keine bestätigten Preisangebote oder Produkttests.
+Sie können vorhandene Toppreise-Importe als Signal verwenden, übernehmen aber
+nicht automatisch fremde Beschreibungen, Bilder, Rabatte oder Händlernachweise.
+Die bisherige Prüfung echter Deals bleibt bestehen.
+
+Bei Veröffentlichung werden drei Social-Pakete mit Text und eigener PNG-Grafik
+vorbereitet. Der Upload auf X, Instagram und TikTok erfolgt manuell. Es werden
+keine Beiträge an externe Plattformen gesendet. TikTok erhält eine Hochformat-
+Fotokarte, kein Video. Die Grafiken nutzen die mitgelieferte freie DejaVu-Schrift.
+
+**Installation, Grenzen und Smartphone-Anleitung:** [UPDATE-3.3.0.md](UPDATE-3.3.0.md).
 
 Ein mobiles, selbst gehostetes Elektronik-Deal-Portal für die Schweiz. NettoDeals
 berechnet den Effektivpreis nach festen Gutscheinen und Zahlungsboni, importiert

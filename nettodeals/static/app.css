@@ -16,6 +16,17 @@
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+.brief-image { display: block; width: 100%; height: auto; border-radius: 18px; object-fit: contain; }
+.brief-card h3 a { text-decoration: none; }
+.brief-grid { margin-top: 20px; }
+.editorial-link { display: inline-block; text-decoration: none; margin: 8px 0; }
+.deal-form .check-row, .check-row { display: flex; flex-direction: row; align-items: start; gap: 10px; }
+.deal-form .check-row input, .check-row input { width: 22px; height: 22px; flex: 0 0 auto; }
+.editorial-entry { border-top: 1px solid var(--line); padding: 18px 0; overflow-wrap: anywhere; }
+.editorial-entry summary { font-weight: 750; cursor: pointer; }
+.social-caption { width: 100%; margin: 10px 0; padding: 12px; font: inherit; border: 1px solid var(--line); border-radius: 12px; }
+.batch-list { display: grid; gap: 16px; max-height: 450px; overflow: auto; }
+
 * { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
