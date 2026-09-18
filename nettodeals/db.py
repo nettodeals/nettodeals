@@ -108,6 +108,8 @@ def init_db(db_path: str) -> None:
             "price_type": "TEXT NOT NULL DEFAULT 'exact'",
             "price_checked_at": "TEXT",
             "manufacturer_uvp": "REAL NOT NULL DEFAULT 0",
+            "uvp_source_url": "TEXT NOT NULL DEFAULT ''",
+            "image_rights_confirmed": "INTEGER NOT NULL DEFAULT 0",
             "image_url": "TEXT NOT NULL DEFAULT ''",
             "image_source": "TEXT NOT NULL DEFAULT ''",
             "review_summary": "TEXT NOT NULL DEFAULT ''",
@@ -123,6 +125,19 @@ def init_db(db_path: str) -> None:
         for name, definition in migrations.items():
             if name not in existing:
                 conn.execute(f'ALTER TABLE deals ADD COLUMN "{name}" {definition}')
+
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS deal_schedule (
+                id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 0,
+                interval_hours INTEGER NOT NULL DEFAULT 12, next_run_at TEXT
+            );
+            INSERT OR IGNORE INTO deal_schedule(id) VALUES (1);
+            CREATE TABLE IF NOT EXISTS deal_queue (
+                deal_id INTEGER PRIMARY KEY REFERENCES deals(id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'queued', message TEXT NOT NULL DEFAULT '',
+                queued_at TEXT NOT NULL
+            );
+        """)
 
         conn.execute(
             """
@@ -276,6 +291,15 @@ def upsert_deal(db_path: str, values: dict[str, Any]) -> str:
                 {key: existing[key] for key in HASH_FIELDS}
             )
             changed = previous_digest != digest
+            image_changed = (existing["image_url"] or "") != (material["image_url"] or "") or (existing["image_source"] or "") != (material["image_source"] or "")
+            uvp_changed = (existing["manufacturer_uvp"] or 0) != (material["manufacturer_uvp"] or 0)
+            if changed or image_changed or uvp_changed:
+                conn.execute("DELETE FROM deal_queue WHERE deal_id=? AND status!='processing'", (existing["id"],))
+            if image_changed:
+                conn.execute("UPDATE deals SET image_rights_confirmed=0 WHERE id=?", (existing["id"],))
+            if uvp_changed:
+                conn.execute("UPDATE deals SET uvp_source_url='' WHERE id=?", (existing["id"],))
+            changed = changed or image_changed or uvp_changed
             status = existing["status"]
             if values["source"] == "manual":
                 status = values.get("status", status)

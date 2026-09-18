@@ -1,4 +1,21 @@
-# NettoDeals.ch 3.3.0 🇨🇭
+# NettoDeals.ch 3.4.0 🇨🇭
+
+## Aktuell: ein Deal-Workflow mit Aurora-Preiskarten
+
+Ab 3.4 erfolgt die Redaktion über `/admin`: normaler Shoplink, geprüfter Preis,
+Produktbild und bestätigtes Bildrecht. YouTube und Affiliate-Partner sind optional.
+Veröffentlichung sofort oder aus einer freigegebenen Warteschlange alle 6/12/24 Stunden.
+Eine belegte Hersteller-UVP wird mit CHF-Ersparnis und abgerundetem Prozentwert
+visualisiert. Ohne UVP-Quelle wird kein Rabatt erfunden.
+
+Die separate Steckbrief-Kategorie ist von der Startseite entfernt; bestehende
+Artikel und Downloads bleiben über ihre alten URLs erreichbar. Der alte
+Steckbrief-Scheduler läuft nicht mehr. Der neue Deal-Zeitplan ist zunächst aus.
+
+**Aktuelle Anleitung: [UPDATE-3.4.0.md](UPDATE-3.4.0.md)** – einschliesslich Bilder,
+YouTube Data API v3, Termux und Grenzen der Automatisierung.
+
+Die folgenden Versionsabschnitte dokumentieren den früheren Funktionsstand.
 
 ## Kostenlose Redaktion ohne Affiliate-Partner
 

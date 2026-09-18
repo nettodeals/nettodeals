@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin · NettoDeals</title>
-  <link rel="stylesheet" href="/static/app.css?v=3.3.0">
+  <link rel="stylesheet" href="/static/app.css?v=3.4.0">
+  <script src="/static/app.js?v=3.4.0" defer></script>
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -35,7 +36,10 @@
     {% if result %}<div class="notice success" role="status">Synchronisierung beendet: {{ result.sources|length }} Quellen verarbeitet.</div>{% endif %}
     {% if import_result %}<div class="notice success" role="status">{{ import_result }}</div>{% endif %}
 
-    <section class="admin-panel"><span class="section-kicker">Neu: ohne Affiliate-Partner</span><h2>Redaktion &amp; Social</h2><p>Steckbriefe sofort oder nach Zeitplan publizieren. Eigene Grafiken und Texte für X, Instagram und TikTok werden automatisch vorbereitet – das Posten erfolgt manuell.</p><a class="primary-button editorial-link" href="/admin/redaktion">Kostenlose Redaktion öffnen →</a></section>
+    <section class="admin-panel"><span class="section-kicker">Ein Workflow für alle Angebote</span><h2>Deals automatisch veröffentlichen</h2><p>Ein normaler Shoplink genügt. YouTube und Affiliate-Partnerschaften sind optional. Preis, Produktbild und Bildrechte prüfen, dann sofort veröffentlichen oder für den Zeitplan freigeben.</p>
+      <form action="/admin/deal-schedule" method="post" class="deal-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label class="check-row"><input type="checkbox" name="enabled" value="yes" {% if deal_schedule.enabled %}checked{% endif %}>Zeitplan aktivieren</label><label>Intervall<select name="hours">{% for hours in [6,12,24] %}<option value="{{ hours }}" {% if deal_schedule.interval_hours == hours %}selected{% endif %}>Alle {{ hours }} Stunden</option>{% endfor %}</select></label><button class="primary-button">Zeitplan speichern</button></form>
+      <p>Veröffentlicht nur vollständig freigegebene Deals. Preisprüfung maximal 48 Stunden alt. Nächster Zeitslot (UTC): {{ deal_schedule.next_run_at or 'nach Aktivierung' }}.</p>
+    </section>
 
     <details class="admin-panel" open>
       <summary>Toppreise-Auswahl importieren</summary>
@@ -68,6 +72,8 @@
         <label>Hersteller-UVP<input name="manufacturer_uvp" type="number" min="0" max="10000000" step="0.01" value="0"></label>
         <label class="wide">Bild-URL mit Nutzungsrecht<input name="image_url" type="url" maxlength="2048"></label>
         <label>Bildquelle/Rechtegeber<input name="image_source" maxlength="160"></label>
+        <label class="wide">Offizielle Quelle zur UVP (HTTPS)<input name="uvp_source_url" type="url" maxlength="2048"></label>
+        <label class="check-row wide"><input name="image_rights_confirmed" type="checkbox" value="yes" required>Ich habe die Erlaubnis zur Nutzung dieses Produktbilds geprüft.</label>
         <label class="wide">Gutscheinbedingungen<textarea name="coupon_terms" maxlength="1000" rows="2"></textarea></label>
         <label class="wide">Beschreibung<textarea name="description" maxlength="2000" rows="3"></textarea></label>
         <button class="primary-button" type="submit">Deal veröffentlichen</button>
@@ -83,12 +89,15 @@
           <div class="draft-copy">
             <span class="source-label">{{ deal.source }}</span>
             <h3>{{ deal.title }}</h3>
-            <p><a href="/admin/redaktion?deal_id={{ deal.id }}">Als Steckbrief veröffentlichen – ohne Händler/Affiliate →</a></p>
+            {% if deal.image_url %}<img class="admin-product-preview" src="{{ deal.image_url }}" alt="Bildvorschau: {{ deal.title }}" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+            <p class="research-links"><a href="https://www.google.com/search?tbm=isch&amp;q={{ deal.title|urlencode }}" target="_blank" rel="noopener noreferrer">Produktbild recherchieren ↗</a> · <a href="https://www.google.com/search?q={{ (deal.title ~ ' Hersteller UVP')|urlencode }}" target="_blank" rel="noopener noreferrer">Hersteller &amp; UVP suchen ↗</a></p>
+            <p>Bildsuche liefert Fundstellen, keine Nutzungserlaubnis. Direkte Bild-URL vom Rechtegeber verwenden; Google-Vorschaubilder nicht übernehmen.</p>
+            {% if deal_queue.get(deal.id) %}<p class="enrichment-note">Zeitplan: {{ deal_queue[deal.id].status }} {{ deal_queue[deal.id].message }}</p>{% endif %}
             <p>{{ deal.shop_name }}{% if deal.base_price > 0 %} · CHF {{ "%.2f"|format(deal.effective_price) }}{% endif %}</p>
             {% if deal.source_url %}<a href="{{ deal.source_url }}" rel="noopener noreferrer nofollow" target="_blank">Signalquelle prüfen ↗</a>{% endif %}
             {% if deal.enrichment_notes %}<p class="enrichment-note">{{ deal.enrichment_notes }}</p>{% endif %}
             <details class="deal-editor">
-              <summary>Händlerdaten ergänzen</summary>
+              <summary>Bild, Aktionspreis &amp; Shop ergänzen</summary>
               <form action="/admin/deals/{{ deal.id }}/update" method="post" class="deal-form compact-form">
                 <input type="hidden" name="csrf" value="{{ csrf_token }}">
                 <label>Shop<input name="shop_name" maxlength="120" value="{% if deal.shop_name != 'Preisvergleich' %}{{ deal.shop_name }}{% endif %}" required></label>
@@ -99,6 +108,9 @@
                 <label>Gutscheincode<input name="coupon_code" maxlength="120" value="{{ deal.coupon_code or '' }}"></label>
                 <label class="wide">Bild-URL mit Nutzungsrecht<input name="image_url" type="url" maxlength="2048" value="{{ deal.image_url or '' }}"></label>
                 <label>Bildquelle/Rechtegeber<input name="image_source" maxlength="160" value="{{ deal.image_source or '' }}"></label>
+                <label class="wide">Offizielle Quelle zur UVP (HTTPS)<input name="uvp_source_url" type="url" maxlength="2048" value="{{ deal.uvp_source_url or '' }}"></label>
+                <label class="check-row wide"><input name="image_rights_confirmed" type="checkbox" value="yes" {% if deal.image_rights_confirmed %}checked{% endif %}>Nutzungsrecht für dieses Produktbild geprüft</label>
+                <p class="wide">Der Endpreis ist der bereits berechnete Aktionspreis inklusive bestätigter Rabatte. Speichern bestätigt die aktuelle Preisprüfung und setzt zuvor importierte Rechenabzüge zurück. Ohne belegte UVP: 0 lassen.</p>
                 <label class="wide">Gutscheinbedingungen<textarea name="coupon_terms" maxlength="1000" rows="2">{{ deal.coupon_terms or '' }}</textarea></label>
                 <button class="primary-button" type="submit">Daten speichern</button>
               </form>
@@ -107,8 +119,10 @@
           <div class="draft-actions">
             <form action="/admin/deals/{{ deal.id }}/publish" method="post">
               <input type="hidden" name="csrf" value="{{ csrf_token }}">
-              <button class="approve-button" type="submit">Als konkreten Deal veröffentlichen</button>
+              <button class="approve-button" type="submit">Jetzt veröffentlichen</button>
             </form>
+            <form action="/admin/deals/{{ deal.id }}/queue" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="approve-button">Für Zeitplan freigeben</button></form>
+            {% if deal_queue.get(deal.id) %}<form action="/admin/deals/{{ deal.id }}/unqueue" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="danger-button">Aus Warteschlange nehmen</button></form>{% endif %}
             <form action="/admin/deals/{{ deal.id }}/delete" method="post">
               <input type="hidden" name="csrf" value="{{ csrf_token }}">
               <button class="danger-button" type="submit">Löschen</button>

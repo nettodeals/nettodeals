@@ -23,7 +23,7 @@
 <p>Eigene Produkt-Steckbriefe für die Schweiz. Keine Affiliate-Mitgliedschaft, kein KI-Abo, kein Social-Publishing-Dienst erforderlich.</p>
 {% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
 {% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}
-<section class="admin-panel"><h2>Automatischer Zeitplan</h2>
+<section class="admin-panel"><h2>Alte Steckbrief-Verwaltung</h2><p class="notice error">Seit Version 3.4 läuft hier kein automatischer Zeitplan mehr. Bestehende Artikel und Downloads bleiben erhalten. Neue Deals bitte im <a href="/admin">Deal-Kontrollzentrum</a> freigeben.</p>
 <p><strong>{{ counts.get('queued', 0) }}</strong> vorgemerkt · {{ counts.get('published', 0) }} publiziert · {{ counts.get('stale', 0) }} veraltet.</p>
 <p role="status">{{ schedule.last_message }}</p>
 {% if schedule.next_run_at %}<p>Nächster Termin (UTC): {{ schedule.next_run_at }}. Kein Nachhol-Stapel nach Neustart.</p>{% endif %}
@@ -31,7 +31,7 @@
 <input type="hidden" name="csrf" value="{{ csrf_token }}">
 <label>Rhythmus<select name="interval_hours">{% for hours in [6,12,24] %}<option value="{{ hours }}" {% if schedule.interval_hours == hours %}selected{% endif %}>Ein Steckbrief alle {{ hours }} Stunden</option>{% endfor %}</select></label>
 <label class="check-row"><input type="checkbox" name="enabled" value="yes" {% if schedule.enabled %}checked{% endif %}>Zeitplan aktiv</label>
-<button class="primary-button" type="submit">Zeitplan speichern</button></form>
+<button class="primary-button" type="submit" disabled>Alter Zeitplan deaktiviert</button></form>
 <p class="import-help">Publiziert nur ausdrücklich freigegebene Einträge mit einem Quellenstand von höchstens sieben Tagen. Keine automatische Beschaffung neuer Quellen. Ohne frische Einträge pausiert der Versand. Auf mehreren Orbit-Instanzen nur eine gemeinsame Datenbank oder eine schreibende Instanz verwenden.</p>
 </section>
 <details class="admin-panel" open><summary>{% if selected %}Aus Entwurf: {{ selected.title }}{% else %}Neuen Steckbrief erstellen{% endif %}</summary>

@@ -96,12 +96,12 @@ def _summary(row: dict[str, Any]) -> str:
     price = safe_money(row.get("effective_price"))
     uvp = safe_money(row.get("manufacturer_uvp"))
     parts = [
-        f"{row['title']} ist ein aktuell gefragtes Produkt aus der Kategorie "
+        f"{row['title']} gehört zur Kategorie "
         f"{row.get('category') or 'Produkte'}."
     ]
     if price and row.get("shop_name"):
         parts.append(f"Der hinterlegte Angebotspreis bei {row['shop_name']} beträgt CHF {price:.2f}.")
-    if uvp > price > 0:
+    if row.get("uvp_source_url") and uvp > price > 0:
         discount = round((uvp - price) / uvp * 100)
         parts.append(f"Das entspricht rund {discount}% unter der Hersteller-UVP von CHF {uvp:.2f}.")
     if row.get("coupon_code"):
@@ -169,25 +169,23 @@ def enrich_deal(db_path: str, deal_id: int, settings: Settings) -> dict[str, Any
         notes: list[str] = []
         direct = is_direct_merchant_url(deal.get("affiliate_link", ""))
         if not direct:
-            notes.append("Kein passendes direktes Händlerangebot im Partnerfeed gefunden.")
+            notes.append("Händlerangebot ergänzen: Ein normaler direkter Shoplink genügt; Affiliate-Partner sind nicht nötig.")
         if not deal.get("image_url"):
-            notes.append("Kein freigegebenes Produktbild im Partnerfeed gefunden.")
+            notes.append("Produktbild ergänzen und Nutzungsrecht bestätigen.")
 
         reviews: list[dict[str, str]] = []
         try:
             reviews = _youtube_reviews(deal["title"], settings)
         except (requests.RequestException, ValueError):
             notes.append("YouTube-Suche vorübergehend nicht verfügbar.")
-        if not reviews and not settings.youtube_api_key:
-            notes.append("YOUTUBE_API_KEY fehlt; Videoempfehlungen wurden übersprungen.")
-
         deal["youtube_reviews"] = json.dumps(reviews, ensure_ascii=False)
-        deal["review_summary"] = _summary(deal)
-        deal["enrichment_status"] = "ready" if direct and deal.get("shop_name") and deal.get("base_price") else "needs_input"
-        deal["enrichment_notes"] = " ".join(notes)
         deal["effective_price"] = effective_price(
             deal.get("base_price"), deal.get("coupon_discount"), deal.get("payment_bonus")
         )
+        problems = publication_problems(deal)
+        deal["review_summary"] = _summary(deal)
+        deal["enrichment_status"] = "needs_input" if problems else "ready"
+        deal["enrichment_notes"] = " ".join(dict.fromkeys(problems + notes))
         conn.execute(
             """
             UPDATE deals SET shop_name = ?, affiliate_link = ?, link_type = ?, base_price = ?,
@@ -200,7 +198,7 @@ def enrich_deal(db_path: str, deal_id: int, settings: Settings) -> dict[str, Any
             (
                 deal.get("shop_name", ""), deal.get("affiliate_link", ""), deal.get("link_type", "affiliate"),
                 safe_money(deal.get("base_price")), safe_money(deal.get("effective_price")),
-                deal.get("price_checked_at") or now_iso(), safe_money(deal.get("manufacturer_uvp")),
+                deal.get("price_checked_at"), safe_money(deal.get("manufacturer_uvp")),
                 normalize_external_url(deal.get("image_url", "")), deal.get("image_source", ""),
                 deal.get("gtin", ""), deal.get("coupon_code", ""), deal.get("coupon_terms", ""),
                 deal.get("coupon_expires_at"), deal["youtube_reviews"], deal["review_summary"],
@@ -210,7 +208,33 @@ def enrich_deal(db_path: str, deal_id: int, settings: Settings) -> dict[str, Any
         return deal
 
 
+def publication_problems(deal: dict[str, Any]) -> list[str]:
+    problems = []
+    if not is_direct_merchant_url(deal.get("affiliate_link", "")) or not deal.get("shop_name", "").strip():
+        problems.append("Händlerangebot fehlt: Shopname und normaler HTTPS-Shoplink reichen aus.")
+    if safe_money(deal.get("effective_price")) <= 0:
+        problems.append("Ein positiver geprüfter Angebotspreis ist erforderlich.")
+    if not normalize_external_url(deal.get("image_url", "")) or not deal.get("image_source", "").strip() or not deal.get("image_rights_confirmed"):
+        problems.append("Produktbild, Bildquelle und bestätigtes Nutzungsrecht sind erforderlich.")
+    if safe_money(deal.get("manufacturer_uvp")) > 0 and not normalize_external_url(deal.get("uvp_source_url", "")):
+        problems.append("Bitte die Herstellerquelle zur UVP angeben oder die unbelegte UVP auf 0 setzen.")
+    try:
+        checked = datetime.fromisoformat(str(deal.get("price_checked_at") or "").replace("Z", "+00:00"))
+        if checked.tzinfo is None:
+            checked = checked.replace(tzinfo=UTC)
+        age = datetime.now(UTC) - checked
+        if age > timedelta(hours=48) or age < -timedelta(minutes=5):
+            problems.append("Preisprüfung ist älter als 48 Stunden oder liegt in der Zukunft; bitte erneut prüfen und speichern.")
+    except ValueError:
+        problems.append("Preisprüfung fehlt; Händlerdaten prüfen und speichern.")
+    return problems
+
+
 def publish_deal(db_path: str, deal_id: int, settings: Settings) -> None:
+    with connection(db_path) as conn:
+        current = conn.execute("SELECT status FROM deals WHERE id=?", (deal_id,)).fetchone()
+        if current and current["status"] == "published":
+            return
     deal = enrich_deal(db_path, deal_id, settings)
     if deal["enrichment_status"] != "ready":
         raise ValueError(deal["enrichment_notes"] or "Händlerlink, Shop und Preis fehlen.")

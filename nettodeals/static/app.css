@@ -544,3 +544,24 @@ details.admin-panel > summary { cursor: pointer; font-weight: 800; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Aurora offer presentation: readable prices over translucent colour. */
+.product-image { position: relative; display: grid; place-items: center; height: auto; aspect-ratio: 4 / 3; padding: 22px; border-radius: 20px; background: radial-gradient(ellipse at 5% 5%, rgba(62,163,233,.09), transparent 70%), radial-gradient(ellipse at 95% 85%, rgba(185,106,209,.09), transparent 65%), #fff; overflow: hidden; }
+.product-image img { width: 100%; height: 100%; max-height: 240px; object-fit: contain; }
+.detail-image { width: 100%; max-height: 380px; object-fit: contain; padding: 24px; border-radius: 24px; background: #fff; }
+.aurora-price { margin: 16px 0; padding: 20px; border: 1px solid rgba(104,102,211,.17); border-radius: 20px; background: linear-gradient(120deg, rgba(64,163,223,.10), rgba(134,105,217,.10) 60%, rgba(220,126,181,.09)); color: #202a48; }
+.price-label { display: block; font-size: .72rem; font-weight: 750; letter-spacing: .04em; }
+.price-headline { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
+.aurora-price .price-headline > strong { display: block; margin: 0; font-size: clamp(1.65rem, 6vw, 2.25rem); font-weight: 850; line-height: 1.15; letter-spacing: -.045em; overflow-wrap: anywhere; }
+.discount-pill { display: inline-flex; flex-direction: column; padding: 9px 13px; border-radius: 13px; color: #fff; background: linear-gradient(120deg, #245db9, #7850b4); font-size: 1.25rem; font-weight: 800; line-height: 1.1; }
+.discount-pill small { color: #fff; font-size: .6rem; margin-top: 4px; }
+.uvp-reference { margin: 9px 0 0; font-size: .74rem; color: #535d75; }
+.saving-total { margin: 5px 0; font-size: .84rem; color: #33346c; font-weight: 750; }
+.uvp-source { display: inline-block; margin-top: 4px; color: #51508d; font-size: .7rem; text-underline-offset: 3px; }
+.admin-product-preview { display: block; width: 160px; height: 130px; object-fit: contain; padding: 12px; margin: 12px 0; background: #fff; border: 1px solid #e0e4ee; border-radius: 14px; }
+.image-preview-message { font-size: .75rem; color: #675781; }
+.admin-product-preview[hidden] { display: none; }
+.draft-actions { flex-wrap: wrap; max-width: 360px; }
+.draft-actions form { min-width: 130px; }
+.detail-offer .found-at strong { display: inline; font-size: inherit; }
+@media (max-width: 619px) { .draft-actions { max-width: none; } .deal-card { padding: 16px; } }

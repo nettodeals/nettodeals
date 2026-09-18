@@ -1,3 +1,18 @@
+# NettoDeals 3.4.0 – Deals im Aurora-Design
+
+- Einheitlicher Deal-Workflow ohne verpflichtenden Affiliate-Zugang oder YouTube-Key.
+- Produktbild, Rechtebestätigung und maximal 48 Stunden alte Preisprüfung vor Freigabe.
+- Hersteller-UVP mit Quellenlink; transparente CHF-Ersparnis und abgerundete Prozente.
+- Aurora-Preiskarten und grössere Produktbilder auf Start- und Detailseiten.
+- Bildvorschau im Adminbereich, Recherchelinks für Hersteller und Bildsuche.
+- Persistente Freigabewarteschlange mit eigenem 6-/12-/24-Stunden-Zeitplan.
+- Änderung importierter Daten entzieht die Warteschlangenfreigabe; neue Bilder
+  und UVP-Werte benötigen erneut eine Bestätigung beziehungsweise Quelle.
+- Alte Steckbriefe nicht mehr auf der Homepage; alte URLs bleiben erhalten,
+  der alte automatische Steckbrief-Zeitplan wird nicht weiter ausgeführt.
+- Neue Datenbankspalten und Tabellen werden additiv angelegt.
+- Keine neuen Pflicht-ENV-Variablen, keine kostenpflichtigen Publishing-Dienste.
+
 # NettoDeals 3.3.0 – Kostenlose Produktredaktion
 
 - Separater Veröffentlichungsweg ohne Affiliate-Partner oder bestätigten Kaufpreis.

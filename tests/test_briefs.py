@@ -28,7 +28,7 @@ def entry(settings, **overrides):
 def test_free_publication_without_any_partner(client, settings):
     brief_id = entry(settings)
     home = client.get("/")
-    assert "Kamera Alpha 7" in home.text
+    assert "Kamera Alpha 7" not in home.text  # Legacy articles keep their URLs, not a homepage category.
     detail = client.get(f"/steckbrief/{brief_id}/wrong")
     assert detail.status_code == 200
     assert "kein bestätigtes Rabattangebot" in detail.text
