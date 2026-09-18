@@ -13,10 +13,11 @@
   <meta property="og:title" content="{{ deal.title }} – NettoDeals Schweiz">
   <meta property="og:description" content="{{ meta_description }}">
   <meta property="og:url" content="{{ canonical_url }}">
-  <meta name="twitter:card" content="summary">
+  <meta name="twitter:card" content="summary_large_image">
+  {% if deal.image_url %}<meta property="og:image" content="{{ deal.image_url }}"><meta name="twitter:image" content="{{ deal.image_url }}">{% endif %}
   <title>{{ deal.title }}{% if deal.effective_price > 0 %} {% if deal.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(deal.effective_price) }}{% endif %} – NettoDeals</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v=3.4.0">
 </head>
 <body>
   <div class="aurora aurora-one" aria-hidden="true"></div>
@@ -45,11 +46,9 @@
       </div>
       <aside class="detail-offer">
         {% if deal.effective_price > 0 %}
-        <small>{% if deal.price_type == 'from' %}Günstigster gefundener Preis{% else %}Effektivpreis{% endif %}</small>
-        <strong>{% if deal.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(deal.effective_price) }}</strong>
+        {% include 'deal_price.html' %}
         {% else %}<strong>Aktion ansehen</strong>{% endif %}
         {% if deal.coupon_code %}<div class="detail-code"><small>Gutscheincode</small><b>{{ deal.coupon_code }}</b></div>{% endif %}
-        {% if deal.uvp_discount_percent > 0 %}<p class="uvp-saving">{{ deal.uvp_discount_percent }} % unter Hersteller-UVP von CHF {{ "%.2f"|format(deal.manufacturer_uvp) }}</p>{% endif %}
         <p class="found-at">Gefunden bei <strong>{{ deal.shop_name }}</strong></p>
         {% if not deal.is_expired %}<a class="deal-cta" href="/go/{{ deal.id }}" rel="nofollow{% if deal.link_type == 'affiliate' %} sponsored{% endif %}">Zum Angebot<span aria-hidden="true">→</span></a>{% else %}<a class="deal-cta expired-cta" href="/">Aktuelle Deals ansehen</a>{% endif %}
         {% if deal.link_type == 'editorial' %}<p class="sponsored-note">Redaktioneller Direktlink · NettoDeals erhält keine Provision.</p>{% else %}<p class="sponsored-note">Beim Kauf können wir eine Provision erhalten. Dein Preis bleibt gleich.</p>{% endif %}
@@ -63,8 +62,8 @@
 
     {% if deal.youtube_reviews_list %}
     <section class="detail-note review-links">
-      <h2>Unabhängige Videos auf YouTube</h2>
-      <p>Automatisch zum exakten Produktnamen gefundene externe Beiträge. Auswahl und Aussagen stammen von den jeweiligen Kanälen.</p>
+      <h2>Passende Videos auf YouTube</h2>
+      <p>Automatisch gefundene Suchtreffer. Modellzuordnung, Unabhängigkeit und Aussagen wurden nicht durch NettoDeals geprüft.</p>
       <ul>{% for video in deal.youtube_reviews_list %}<li><a href="{{ video.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ video.title }}</a><small>{{ video.channel }}</small></li>{% endfor %}</ul>
     </section>
     {% endif %}

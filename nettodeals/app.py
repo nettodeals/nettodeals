@@ -25,9 +25,11 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .brief_routes import register_brief_routes
-from .briefs import brief_dict, brief_path, run_schedule
+from .briefs import brief_dict, brief_path
 from .config import Settings
 from .db import connection, expire_due_deals, init_db, log_import, now_iso, upsert_deal
+from .deal_schedule import configure as configure_deals
+from .deal_schedule import enqueue, tick
 from .editorial import is_direct_merchant_url
 from .editorial import publish_deal as publish_enriched_deal
 from .security import (
@@ -105,7 +107,8 @@ def _deal_dict(row: sqlite3.Row) -> dict[str, Any]:
     deal["display_source"] = deal.get("shop_name") or deal.get("source_name")
     uvp = safe_money(deal.get("manufacturer_uvp"))
     price = safe_money(deal.get("effective_price"))
-    deal["uvp_discount_percent"] = round((uvp - price) / uvp * 100) if uvp > price > 0 else 0
+    deal["uvp_saving"] = round(uvp - price, 2) if deal.get("uvp_source_url") and uvp > price > 0 else 0
+    deal["uvp_discount_percent"] = int((uvp - price) / uvp * 100) if deal["uvp_saving"] else 0
     try:
         deal["youtube_reviews_list"] = json.loads(deal.get("youtube_reviews") or "[]")
     except (TypeError, json.JSONDecodeError):
@@ -155,7 +158,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def editorial_loop() -> None:
         while True:
             try:
-                await asyncio.to_thread(run_schedule, settings.db_path, settings.site_url)
+                await asyncio.to_thread(tick, settings.db_path, settings)
             except (sqlite3.Error, ValueError):
                 logging.getLogger(__name__).exception("Editorial scheduler failed; retry in 60s")
             await asyncio.sleep(60)
@@ -176,7 +179,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.3.0",
+        version="3.4.0",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -435,7 +438,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.3.0",
+            "version": "3.4.0",
             "sources": sync_service.configured_sources(),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,
@@ -495,6 +498,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "SELECT * FROM deals WHERE status = 'expired' ORDER BY expired_at DESC LIMIT 100"
             ).fetchall()
             logs = conn.execute("SELECT * FROM import_logs ORDER BY id DESC LIMIT 25").fetchall()
+            schedule = dict(conn.execute("SELECT * FROM deal_schedule WHERE id=1").fetchone())
+            queue = {row["deal_id"]: dict(row) for row in conn.execute("SELECT * FROM deal_queue")}
             counts = conn.execute(
                 "SELECT status, COUNT(*) AS count FROM deals GROUP BY status"
             ).fetchall()
@@ -503,6 +508,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "published": [dict(row) for row in published],
             "expired": [dict(row) for row in expired],
             "logs": [dict(row) for row in logs],
+            "deal_schedule": schedule,
+            "deal_queue": queue,
             "counts": {row["status"]: row["count"] for row in counts},
             "sources": sync_service.configured_sources(),
             "csrf_token": csrf_token(settings.admin_token, cookie),
@@ -596,6 +603,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.delete_cookie(COOKIE_NAME, path="/admin")
         return response
 
+    @app.post("/admin/deal-schedule")
+    def update_deal_schedule(request: Request, csrf: Annotated[str, Form()], hours: Annotated[int, Form()], enabled: Annotated[str, Form()] = "no"):
+        _verify_csrf(request, settings, csrf)
+        try:
+            configure_deals(settings.db_path, enabled == "yes", hours)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return RedirectResponse("/admin", 303)
+
+    @app.post("/admin/deals/{deal_id}/queue")
+    def queue_deal(request: Request, deal_id: int, csrf: Annotated[str, Form()]):
+        _verify_csrf(request, settings, csrf)
+        try:
+            enqueue(settings.db_path, deal_id)
+        except ValueError as exc:
+            return HTMLResponse(TEMPLATE_ENV.get_template("admin.html").render(**admin_context(request, error=str(exc))), status_code=422)
+        return RedirectResponse("/admin", 303)
+
+    @app.post("/admin/deals/{deal_id}/unqueue")
+    def unqueue_deal(request: Request, deal_id: int, csrf: Annotated[str, Form()]):
+        _verify_csrf(request, settings, csrf)
+        with connection(settings.db_path) as conn:
+            conn.execute("DELETE FROM deal_queue WHERE deal_id=? AND status!='processing'", (deal_id,))
+        return RedirectResponse("/admin", 303)
+
     @app.post("/admin/deals/{deal_id}/publish")
     def publish_deal(request: Request, deal_id: int, csrf: Annotated[str, Form()]):
         _verify_csrf(request, settings, csrf)
@@ -624,6 +656,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         coupon_code: Annotated[str, Form()] = "",
         coupon_terms: Annotated[str, Form()] = "",
         link_type: Annotated[str, Form()] = "editorial",
+        uvp_source_url: Annotated[str, Form()] = "",
+        image_rights_confirmed: Annotated[str, Form()] = "no",
     ):
         _verify_csrf(request, settings, csrf)
         safe_link = normalize_external_url(affiliate_link)
@@ -636,19 +670,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with connection(settings.db_path) as conn:
             if not conn.execute("SELECT 1 FROM deals WHERE id = ?", (deal_id,)).fetchone():
                 raise HTTPException(status_code=404, detail="Deal nicht gefunden.")
+            conn.execute("DELETE FROM deal_queue WHERE deal_id=? AND status!='processing'", (deal_id,))
             conn.execute(
                 """
                 UPDATE deals SET shop_name = ?, affiliate_link = ?, link_type = ?,
                     base_price = ?, effective_price = ?, manufacturer_uvp = ?, image_url = ?,
                     image_source = ?, coupon_code = ?, coupon_terms = ?,
-                    enrichment_status = 'pending', updated_at = ?, price_checked_at = ?
+                    enrichment_status = 'pending', updated_at = ?, price_checked_at = ?,
+                    uvp_source_url = ?, image_rights_confirmed = ?, coupon_discount = 0, payment_bonus = 0
                 WHERE id = ?
                 """,
                 (
                     shop_name.strip(), safe_link, "affiliate" if link_type == "affiliate" else "editorial",
                     safe_money(base_price), safe_money(base_price),
                     safe_money(manufacturer_uvp), safe_image, image_source.strip(),
-                    coupon_code.strip(), coupon_terms.strip(), now_iso(), now_iso(), deal_id,
+                    coupon_code.strip(), coupon_terms.strip(), now_iso(), now_iso(),
+                    normalize_external_url(uvp_source_url) if uvp_source_url else "", int(image_rights_confirmed == "yes"), deal_id,
                 ),
             )
         return RedirectResponse("/admin", status_code=303)
@@ -687,7 +724,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title: Annotated[str, Form()],
         shop_name: Annotated[str, Form()],
         affiliate_link: Annotated[str, Form()],
-        link_type: Annotated[str, Form()] = "affiliate",
+        link_type: Annotated[str, Form()] = "editorial",
         category: Annotated[str, Form()] = "Deals",
         base_price: Annotated[float, Form()] = 0.0,
         coupon_discount: Annotated[float, Form()] = 0.0,
@@ -698,6 +735,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         image_source: Annotated[str, Form()] = "",
         coupon_terms: Annotated[str, Form()] = "",
         description: Annotated[str, Form()] = "",
+        uvp_source_url: Annotated[str, Form()] = "",
+        image_rights_confirmed: Annotated[str, Form()] = "no",
     ):
         _verify_csrf(request, settings, csrf)
         safe_link = normalize_external_url(affiliate_link)
@@ -737,8 +776,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 (candidate.source_id,),
             ).fetchone()
         if row:
-            publish_enriched_deal(settings.db_path, int(row["id"]), settings)
-        return RedirectResponse("/", status_code=303)
+            with connection(settings.db_path) as conn:
+                conn.execute("UPDATE deals SET uvp_source_url=?, image_rights_confirmed=? WHERE id=?", (normalize_external_url(uvp_source_url) if uvp_source_url else "", int(image_rights_confirmed == "yes"), row["id"]))
+            try:
+                publish_enriched_deal(settings.db_path, int(row["id"]), settings)
+            except ValueError as exc:
+                return HTMLResponse(TEMPLATE_ENV.get_template("admin.html").render(**admin_context(request, error=f"Entwurf gespeichert. {exc}")), status_code=422)
+        return RedirectResponse("/admin", status_code=303)
 
     return app
 

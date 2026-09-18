@@ -51,6 +51,9 @@ def test_manual_deal_insert_xss_escape_and_click_tracking(client, settings):
             "payment_bonus": "20.00",
             "coupon_code": "SAVE100",
             "description": payload,
+            "image_url": "https://maker.example/product.jpg",
+            "image_source": "Hersteller, Nutzung freigegeben",
+            "image_rights_confirmed": "yes",
         },
         follow_redirects=False,
     )

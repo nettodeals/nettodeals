@@ -1,0 +1,10 @@
+<div class="aurora-price">
+  <span class="price-label">{% if deal.is_expired %}Letzter Angebotspreis{% else %}Aktionspreis{% endif %}{% if deal.price_type == 'from' %} ab{% endif %}</span>
+  <div class="price-headline"><strong>CHF {{ "%.2f"|format(deal.effective_price) }}</strong>
+  {% if deal.uvp_discount_percent > 0 %}<span class="discount-pill">−{{ deal.uvp_discount_percent }} %<small>zur UVP</small></span>{% endif %}</div>
+  {% if deal.uvp_saving > 0 %}
+  <div class="uvp-reference">Hersteller-UVP <del>CHF {{ "%.2f"|format(deal.manufacturer_uvp) }}</del></div>
+  <p class="saving-total">CHF {{ "%.2f"|format(deal.uvp_saving) }} günstiger als die UVP</p>
+  <a class="uvp-source" href="{{ deal.uvp_source_url }}" target="_blank" rel="noopener noreferrer nofollow">UVP-Quelle ↗</a>
+  {% else %}<p class="uvp-reference">{% if deal.uvp_source_url and deal.manufacturer_uvp > 0 %}Keine Ersparnis gegenüber der hinterlegten UVP{% else %}Keine belegte UVP verfügbar{% endif %}</p>{% endif %}
+</div>

@@ -65,6 +65,7 @@ def test_partner_offer_enriches_and_expires_toppreise_signal(settings):
         deal_id = conn.execute(
             "SELECT id FROM deals WHERE source = 'toppreise'"
         ).fetchone()[0]
+        conn.execute("UPDATE deals SET image_rights_confirmed=1, uvp_source_url='https://maker.example/x15' WHERE id=?", (deal_id,))
 
     publish_deal(settings.db_path, deal_id, replace(settings, deal_lifetime_hours=48))
     with connection(settings.db_path) as conn:
