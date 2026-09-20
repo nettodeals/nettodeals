@@ -1,3 +1,15 @@
+# NettoDeals 3.4.1 – Groq-Redaktionspilot
+
+- Optionaler Textassistent mit festem API-Endpunkt und strukturierten Antworten.
+- Bearbeitbare Kurzbeschreibung sowie X-, Instagram- und TikTok-Entwürfe.
+- Menschliche Textfreigabe, unabhängig von Deal-Freigabe und Zeitplan.
+- Quellstand-Vergleich verhindert Verwendung veralteter KI-Texte.
+- Maximal 10 API-Versuche pro UTC-Tag und Datenbank, keine automatischen Retries.
+- Keine externen Tools, keine Bildgenerierung, keine Preisänderung durch KI.
+- Geheimnisse werden nicht in Vorlagen, Datenbank oder Fehlermeldungen ausgegeben.
+- Additive Datenbanktabellen; keine neue Python-Abhängigkeit.
+- 78 lokale Tests erfolgreich; Live-Modellqualität noch nicht mit Nutzerschlüssel geprüft.
+
 # NettoDeals 3.4.0 – Deals im Aurora-Design
 
 - Einheitlicher Deal-Workflow ohne verpflichtenden Affiliate-Zugang oder YouTube-Key.

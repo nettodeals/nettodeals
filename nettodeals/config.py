@@ -56,6 +56,8 @@ class Settings:
     google_trends_enabled: bool = True
     google_trends_url: str = "https://trends.google.com/trending/rss?geo=CH"
     youtube_api_key: str = ""
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-20b"
     deal_lifetime_hours: int = 48
 
     auto_sync_enabled: bool = True
@@ -90,6 +92,8 @@ class Settings:
                 "https://trends.google.com/trending/rss?geo=CH",
             ),
             youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
+            groq_api_key=os.getenv("GROQ_API_KEY", "").strip(),
+            groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b").strip(),
             deal_lifetime_hours=_int("DEAL_LIFETIME_HOURS", 48, minimum=1, maximum=720),
             auto_sync_enabled=_bool("AUTO_SYNC_ENABLED", True),
             auto_sync_on_start=_bool("AUTO_SYNC_ON_START", True),

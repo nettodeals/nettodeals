@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from .ai_editor import approved_summary
 from .config import Settings
 from .db import connection, now_iso
 from .security import normalize_external_url
@@ -183,7 +184,8 @@ def enrich_deal(db_path: str, deal_id: int, settings: Settings) -> dict[str, Any
             deal.get("base_price"), deal.get("coupon_discount"), deal.get("payment_bonus")
         )
         problems = publication_problems(deal)
-        deal["review_summary"] = _summary(deal)
+        reviewed = approved_summary(db_path, deal)
+        deal["review_summary"] = (reviewed + " Kein eigener Produkttest.") if reviewed else _summary(deal)
         deal["enrichment_status"] = "needs_input" if problems else "ready"
         deal["enrichment_notes"] = " ".join(dict.fromkeys(problems + notes))
         conn.execute(

@@ -89,6 +89,7 @@
           <div class="draft-copy">
             <span class="source-label">{{ deal.source }}</span>
             <h3>{{ deal.title }}</h3>
+            <p><a href="/admin/deals/{{ deal.id }}/ai">Mit KI vorbereiten – Groq-Pilot →</a></p>
             {% if deal.image_url %}<img class="admin-product-preview" src="{{ deal.image_url }}" alt="Bildvorschau: {{ deal.title }}" loading="lazy" referrerpolicy="no-referrer">{% endif %}
             <p class="research-links"><a href="https://www.google.com/search?tbm=isch&amp;q={{ deal.title|urlencode }}" target="_blank" rel="noopener noreferrer">Produktbild recherchieren ↗</a> · <a href="https://www.google.com/search?q={{ (deal.title ~ ' Hersteller UVP')|urlencode }}" target="_blank" rel="noopener noreferrer">Hersteller &amp; UVP suchen ↗</a></p>
             <p>Bildsuche liefert Fundstellen, keine Nutzungserlaubnis. Direkte Bild-URL vom Rechtegeber verwenden; Google-Vorschaubilder nicht übernehmen.</p>

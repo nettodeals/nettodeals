@@ -1,0 +1,24 @@
+<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>KI-Textentwurf · NettoDeals</title><link rel="stylesheet" href="/static/app.css?v=3.4.1"></head>
+<body class="admin-body"><header class="admin-header"><a class="brand" href="/">Netto<span>Deals</span></a><a href="/admin">← Deal-Kontrollzentrum</a></header><main class="admin-main">
+<section class="admin-panel"><span class="section-kicker">Groq-Pilot</span><h1>Text vorbereiten</h1><h2>{{ deal.title }}</h2><p>Modell: {{ model }} · API-Versuche heute (UTC): {{ used }}/{{ limit }}</p>
+<p>Der Assistent recherchiert keine Preise, prüft keine Bildrechte und veröffentlicht nichts. Er erhält nur Produktname, Kategorie und die unten bestätigten Fakten. Die Antworten müssen redaktionell geprüft werden.</p>
+{% if not configured %}<p class="notice error">GROQ_API_KEY ist noch nicht in der Serverumgebung hinterlegt. Ohne Schlüssel bleibt die normale Veröffentlichung verfügbar.</p>{% endif %}
+{% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}{% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}
+<p>Händler: {{ deal.shop_name }} · hinterlegter Endpreis CHF {{ '%.2f'|format(deal.effective_price) }}</p>
+{% if deal.source_url %}<p><a href="{{ deal.source_url }}" target="_blank" rel="noopener noreferrer nofollow">Hinterlegte Quelle öffnen ↗</a></p>{% endif %}
+<p>Quellen und Rechte selbst prüfen. Keine Zugangsdaten, internen Notizen oder personenbezogenen Daten in das Faktenfeld kopieren.</p>
+{% if deal.status == 'draft' %}<form class="deal-form" method="post" action="/admin/deals/{{ deal.id }}/ai/generate"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+<label class="wide">Geprüfte Produktfakten mit Quellenhinweisen<textarea name="facts" rows="7" minlength="10" maxlength="3000" required placeholder="Beispiel für die Struktur: Modell und Variante; belegte Ausstattung; Quelle und Prüfdatum. Nur tatsächliche Angaben eintragen.">{{ facts_value }}</textarea></label>
+<label class="check-row wide"><input type="checkbox" name="confirmed" value="yes" required>Ich habe diese Fakten geprüft und möchte sie zur Textvorbereitung an Groq übermitteln.</label>
+<p class="wide">Eine neue KI-Anfrage nimmt diesen Deal aus der Warteschlange. Nach Text- und Datenprüfung erneut für den Zeitplan freigeben.</p>
+<button class="primary-button" {% if not configured %}disabled{% endif %}>Entwurf vorbereiten</button></form>{% endif %}</section>
+{% if ai %}<section class="admin-panel"><h2>Vorschlag prüfen &amp; bearbeiten</h2><p>Status: {{ {'pending':'Noch nicht freigegeben','approved':'Text freigegeben'}.get(ai.status, ai.status) }}</p>
+{% if ai.stale %}<p class="notice error">Deal-Daten wurden geändert. Dieser Text wird nicht automatisch verwendet. Bitte neu vorbereiten.</p>{% endif %}
+<p>Besonders Modell, Eigenschaften, Zahlen und Werbeaussagen vergleichen. Eine formal korrekte KI-Antwort kann sachlich falsch sein. Social-Texte sind zum manuellen Kopieren; Shop-/Artikellink und nötige Kennzeichnung vor dem Posten ergänzen.</p>
+<form class="deal-form" method="post" action="/admin/deals/{{ deal.id }}/ai/approve"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="expected" value="{{ ai.fingerprint }}">
+{% for field, maximum in fields.items() %}<label class="wide">{{ {'summary':'Kurzbeschreibung für die Website','x':'X – Textentwurf','instagram':'Instagram – Textentwurf','tiktok':'TikTok – Textentwurf'}[field] }}<textarea name="{{ field }}" rows="5" maxlength="{{ maximum }}" required>{{ ai.texts[field] }}</textarea></label>{% endfor %}
+<label class="check-row wide"><input type="checkbox" name="confirmed" value="yes" required>Texte mit den Quellen abgeglichen; keine erfundenen Produkttests oder Eigenschaften enthalten.</label>
+<button class="primary-button" {% if ai.stale or deal.status != 'draft' %}disabled{% endif %}>Nur Texte freigeben</button></form>
+<form method="post" action="/admin/deals/{{ deal.id }}/ai/discard"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="text-button">KI-Entwurf verwerfen</button></form>
+<p><a href="/admin">Zur Veröffentlichung und Zeitplanung →</a></p></section>{% endif %}
+</main></body></html>

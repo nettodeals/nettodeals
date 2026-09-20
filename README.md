@@ -1,4 +1,14 @@
-# NettoDeals.ch 3.4.0 🇨🇭
+# NettoDeals.ch 3.4.1 🇨🇭
+
+## Groq-Redaktionspilot
+
+Im Adminbereich je Entwurf „Mit KI vorbereiten“ wählen. Geprüfte Produktfakten
+werden nach Bestätigung an Groq übermittelt. Der Assistent erstellt editierbare
+Website- und Social-Texte; Veröffentlichung und Preisprüfung bleiben separat.
+Ohne Schlüssel arbeitet die Anwendung wie bisher. Nur `GROQ_API_KEY` ist für
+den optionalen Test zusätzlich nötig. Kein automatischer API-Aufruf beim Start.
+
+**Einrichtung, Termux-Update und Testablauf:** [UPDATE-GROQ-PILOT.md](UPDATE-GROQ-PILOT.md).
 
 ## Aktuell: ein Deal-Workflow mit Aurora-Preiskarten
 

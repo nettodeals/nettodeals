@@ -127,6 +127,15 @@ def init_db(db_path: str) -> None:
                 conn.execute(f'ALTER TABLE deals ADD COLUMN "{name}" {definition}')
 
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS ai_drafts (
+                deal_id INTEGER PRIMARY KEY REFERENCES deals(id) ON DELETE CASCADE,
+                fingerprint TEXT NOT NULL, facts TEXT NOT NULL, payload TEXT NOT NULL,
+                model TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ai_attempts (
+                id INTEGER PRIMARY KEY, deal_id INTEGER NOT NULL,
+                started_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running'
+            );
             CREATE TABLE IF NOT EXISTS deal_schedule (
                 id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL DEFAULT 0,
                 interval_hours INTEGER NOT NULL DEFAULT 12, next_run_at TEXT
