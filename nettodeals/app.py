@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .ai_routes import register_ai_routes
 from .brief_routes import register_brief_routes
 from .briefs import brief_dict, brief_path
 from .config import Settings
@@ -179,7 +180,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.4.0",
+        version="3.4.1",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -188,6 +189,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.sync_service = sync_service
     register_brief_routes(app, settings, _render, _session_cookie, _verify_csrf)
+    register_ai_routes(app, settings, _render, _session_cookie, _verify_csrf)
     if settings.allowed_hosts != ("*",):
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -438,7 +440,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.4.0",
+            "version": "3.4.1",
             "sources": sync_service.configured_sources(),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,

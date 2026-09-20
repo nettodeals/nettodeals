@@ -88,7 +88,7 @@
           </div>
 
           <h3><a class="card-title-link" href="{{ deal.path }}">{{ deal.title }}</a></h3>
-          {% if deal.description %}<p class="description">{{ deal.description }}</p>{% endif %}
+          {% if deal.review_summary %}<p class="description">{{ deal.review_summary }}</p>{% elif deal.description %}<p class="description">{{ deal.description }}</p>{% endif %}
 
           {% if deal.coupon_code %}
           <button class="coupon" type="button" data-copy="{{ deal.coupon_code }}" aria-label="Gutscheincode {{ deal.coupon_code }} kopieren">
