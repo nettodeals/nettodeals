@@ -47,6 +47,32 @@ def validate_payload(payload):
     return payload
 
 
+def api_error_message(response):
+    """Expose only fixed diagnostic labels, never provider text or credentials."""
+    status = response.status_code
+    detail = ""
+    try:
+        body = response.json()
+        error = body.get("error", {}) if isinstance(body, dict) else {}
+        code = error.get("code") if isinstance(error, dict) else None
+    except (ValueError, TypeError):
+        code = None
+    if code == "model_permission_blocked_org":
+        detail = "Modell auf Organisationsebene gesperrt. Organisation des Orbit-Schlüssels prüfen."
+    elif code == "model_permission_blocked_project":
+        detail = "Modell auf Projektebene gesperrt. Projekt des Orbit-Schlüssels prüfen."
+    elif status == 403 and re.search(r"\berror code:\s*1010\b", getattr(response, "text", "")[:8192], re.I):
+        detail = "Cloudflare 1010: Zugriff vom App-Server anhand der Client-Kennung blockiert. Groq-Support kontaktieren."
+    if not detail:
+        detail = {
+            401: "API-Schlüssel nicht akzeptiert. GROQ_API_KEY in Orbit prüfen.",
+            403: "Zugriff verweigert; Ursache nicht eindeutig. Keine bestätigte Modell-Sperre. Groq-Support kontaktieren.",
+            413: "Anfrage zu gross. Insbesondere das Tokenlimit (TPM) des Projekts prüfen.",
+            429: "Groq-Kontingent oder Anfragelimit erreicht. Später manuell erneut versuchen.",
+        }.get(status, "Groq-Anfrage fehlgeschlagen. Bestehende Inhalte bleiben erhalten.")
+    return f"Groq-Diagnose: HTTP {status}. {detail}"
+
+
 def generate(settings, deal_id, facts):
     if not settings.groq_api_key:
         raise ValueError("GROQ_API_KEY fehlt. Der bisherige Deal-Workflow bleibt nutzbar.")
@@ -86,8 +112,7 @@ def generate(settings, deal_id, facts):
             timeout=(5, 35), allow_redirects=False,
         )
         if response.status_code != 200:
-            messages = {401: "API-Schlüssel nicht akzeptiert.", 403: "Kein Zugriff auf dieses Modell.", 429: "Groq-Kontingent oder Anfragelimit erreicht. Später manuell erneut versuchen."}
-            raise ValueError(messages.get(response.status_code, "Groq-Anfrage fehlgeschlagen. Bestehende Inhalte bleiben erhalten."))
+            raise ValueError(api_error_message(response))
         data = response.json()
         choice = data["choices"][0]
         if choice.get("finish_reason") != "stop":
