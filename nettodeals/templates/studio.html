@@ -1,0 +1,40 @@
+<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deal & Social · NettoDeals</title><link rel="stylesheet" href="/static/app.css?v=3.5.0"><script src="/static/studio.js" defer></script></head>
+<body class="admin-body"><header class="admin-header"><a class="brand" href="/">NettoDeals <small>CH</small></a><a href="/admin#drafts">← Kontrollzentrum</a></header><main class="admin-main studio-main">
+<span class="section-kicker">Deal & Social</span><h1>{{ deal.title }}</h1>
+<p>Status: <strong>{{ deal.status }}</strong> · <a href="{{ deal.affiliate_link }}" target="_blank" rel="noopener noreferrer">Händlerangebot prüfen ↗</a></p>
+{% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}{% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
+{% if stale %}<p class="notice error">Paket veraltet: Daten haben sich geändert. Bitte neu vorbereiten.</p>{% endif %}
+<nav class="admin-tabs" aria-label="Entwurfsbereiche"><a href="#facts">1. Daten</a><a href="#copy">2. Texte</a><a href="#graphics">3. Bilder & Export</a></nav>
+<section class="admin-panel" id="facts"><h2>Händlerdaten prüfen</h2>{% if deal.image_url %}<img class="admin-product-preview" src="{{ deal.image_url }}" alt="Zu prüfendes Produktbild" referrerpolicy="no-referrer">{% endif %}<p>{{ deal.enrichment_notes }}</p>
+{% if deal.status == 'draft' %}<form method="post" action="/admin/studio/{{ deal.id }}/prepare" class="deal-form">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<label class="wide">Produkttitel / exakte Variante<input name="title" value="{{ deal.title }}" maxlength="300" required></label>
+<label>Shopname<input name="shop_name" value="{{ deal.shop_name }}" maxlength="120" required></label>
+<label>Endpreis CHF inkl. berücksichtigter Rabatte<input name="base_price" type="number" min="0" max="10000000" step="0.01" value="{{ deal.effective_price }}" required></label>
+<label class="wide">Direkter Händlerlink<input name="affiliate_link" type="url" value="{{ deal.affiliate_link }}" required></label>
+<label>Vergleichsart<select name="reference_kind"><option value="none">Kein belegter Vergleich</option><option value="merchant" {% if deal.comparison_price %}selected{% endif %}>Händler-Stattpreis</option><option value="uvp" {% if deal.manufacturer_uvp and not deal.comparison_price %}selected{% endif %}>Hersteller-UVP</option></select></label>
+<label>Vergleichspreis CHF<input name="reference_price" type="number" min="0" max="10000000" step="0.01" value="{{ deal.comparison_price or deal.manufacturer_uvp }}"></label>
+<label class="wide">Quelle zum Vergleichspreis<input name="reference_source" type="url" value="{{ deal.comparison_source or deal.uvp_source_url }}"></label>
+<label class="wide">Produktbild-URL<input name="image_url" type="url" value="{{ deal.image_url }}"></label>
+<label class="wide">Bildquelle / Rechtegeber<input name="image_source" value="{{ deal.image_source }}" maxlength="2048"></label>
+<label class="wide">Übernommene Produktfakten – Modellzuordnung prüfen<textarea name="facts" maxlength="3000" rows="7">{{ deal.description or '' }}</textarea></label>
+<label class="check-row wide"><input name="rights" type="checkbox" value="yes" {% if deal.image_rights_confirmed %}checked{% endif %}>Nutzungsrecht des Bildes für Website und Social Media geprüft</label>
+<label class="check-row wide"><input name="checked" type="checkbox" value="yes">Preis, Lieferkosten, Verfügbarkeit und genaue Variante jetzt beim Händler geprüft</label>
+<label class="check-row wide"><input name="use_gemini" type="checkbox" value="yes" {% if not gemini %}disabled{% endif %}>Gemini verwenden: öffentliche Produktfakten an Google senden und Textentwürfe erstellen</label>
+<p class="wide">{% if gemini %}Modell: {{ model }} · {{ used }}/10 API-Versuche heute (UTC).{% else %}Ohne GEMINI_API_KEY werden Textvorlagen verwendet.{% endif %} Kein eigener Produkttest. Bei API-Fehlern bleiben Vorlagen verfügbar. Kostenlosen API-Tarif im Google-Konto prüfen; die App kann deinen Abrechnungstarif nicht erkennen.</p>
+<button class="primary-button wide">Deal + Social vorbereiten</button></form>{% else %}<p>Veröffentlichte Inhalte werden hier nicht überschrieben. Zum Überarbeiten im Kontrollzentrum beenden und neu prüfen.</p>{% endif %}
+</section>
+<section class="admin-panel" id="copy"><h2>Texte prüfen und bearbeiten</h2>
+{% if pack %}<p>Erstellt mit: {{ pack.provider }} · {{ pack.created_at }}</p>{% if pack.notes %}<p class="notice">{{ pack.notes }}</p>{% endif %}
+<form action="/admin/studio/{{ deal.id }}/approve" method="post" class="deal-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="expected" value="{{ pack.fingerprint }}">
+{% for key,label in [('summary','Deal-Kurzbeschreibung'),('x','X'),('instagram','Instagram'),('tiktok','TikTok'),('script','TikTok-Sprechertext')] %}
+<label class="wide">{{ label }}<textarea id="text-{{ key }}" name="{{ key }}" rows="5" maxlength="5000" required>{{ texts[key] }}</textarea></label><button type="button" class="text-button" data-copy="text-{{ key }}">{{ label }} kopieren</button>
+{% endfor %}
+{% if deal.status == 'draft' and not stale %}<label class="check-row wide"><input name="confirmed" type="checkbox" value="yes" required>Texte, Quellen, Preise und Varianten abgeglichen; keine erfundenen Tests oder Eigenschaften</label><button class="primary-button">Texte freigeben</button>{% endif %}</form>
+{% if pack.approved and not stale and deal.status == 'draft' %}<form action="/admin/studio/{{ deal.id }}/publish" method="post"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="approve-button">Deal jetzt veröffentlichen</button></form><p>Oder im <a href="/admin#drafts">Kontrollzentrum</a> für den Zeitplan freigeben.</p>{% endif %}
+{% else %}<p>Zuerst Daten prüfen und „Deal + Social vorbereiten“ wählen.</p>{% endif %}</section>
+<section class="admin-panel" id="graphics"><h2>Aurora-Bilder & Social-Paket</h2><p>Für manuelles Posten. Entwürfe nicht als bereits veröffentlichte Angebote teilen. Nach Preisänderungen neu vorbereiten. Ein abgelaufener Deal macht bereits heruntergeladene Bilder nicht automatisch ungültig auf der Plattform: dort bei Bedarf entfernen.</p>
+{% if pack and not stale %}<div class="studio-images">{% for kind,label in [('feed','Feed · 1080 × 1350'),('story','Story / TikTok · 1080 × 1920')] %}{% if pack[kind] %}<figure><img src="/admin/studio/{{ deal.id }}/image/{{ kind }}" alt="{{ label }} – Deal-Vorschau"><figcaption>{{ label }} · <a href="/admin/studio/{{ deal.id }}/image/{{ kind }}" download="nettodeals-{{ deal.id }}-{{ kind }}.png">PNG herunterladen</a></figcaption></figure>{% endif %}{% endfor %}</div><a class="primary-button" href="/admin/studio/{{ deal.id }}/download">Alle Texte + Bilder als ZIP</a>{% endif %}
+</section>
+<section class="admin-panel"><h2>YouTube ergänzen</h2><p>Optional: YouTube Data API v3. Suchtreffer sind keine redaktionell geprüften Empfehlungen. Die Deal-Seite zeigt Vorschaubilder der gefundenen Videos.</p><form method="post" action="/admin/studio/{{ deal.id }}/youtube"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="text-button">Passende Videos suchen</button></form></section>
+<p id="copy-status" role="status"></p></main></body></html>

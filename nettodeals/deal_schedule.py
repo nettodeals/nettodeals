@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from .db import connection
 from .editorial import publication_problems, publish_deal
+from .studio import digest
 
 
 def enqueue(db_path, deal_id):
@@ -11,6 +12,9 @@ def enqueue(db_path, deal_id):
         if not row:
             raise ValueError("Nur vorhandene Entwürfe können freigegeben werden.")
         problems = publication_problems(dict(row))
+        pack = conn.execute("SELECT * FROM studio_packages WHERE deal_id=?", (deal_id,)).fetchone()
+        if pack and (not pack["approved"] or pack["fingerprint"] != digest(dict(row))):
+            problems.append("Aktuelle Deal- und Social-Texte zuerst im gemeinsamen Editor freigeben.")
         if problems:
             raise ValueError(" ".join(problems))
         conn.execute(

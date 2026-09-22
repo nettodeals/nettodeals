@@ -56,6 +56,8 @@ class Settings:
     google_trends_enabled: bool = True
     google_trends_url: str = "https://trends.google.com/trending/rss?geo=CH"
     youtube_api_key: str = ""
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash-lite"
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-20b"
     deal_lifetime_hours: int = 48
@@ -92,6 +94,8 @@ class Settings:
                 "https://trends.google.com/trending/rss?geo=CH",
             ),
             youtube_api_key=os.getenv("YOUTUBE_API_KEY", ""),
+            gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite").strip(),
             groq_api_key=os.getenv("GROQ_API_KEY", "").strip(),
             groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b").strip(),
             deal_lifetime_hours=_int("DEAL_LIFETIME_HOURS", 48, minimum=1, maximum=720),

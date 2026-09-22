@@ -16,6 +16,7 @@ from .config import Settings
 from .db import connection, now_iso
 from .security import normalize_external_url
 from .services import effective_price, safe_money
+from .studio import digest
 
 TOPPREISE_HOSTS = {"toppreise.ch", "www.toppreise.ch"}
 STOPWORDS = {
@@ -88,6 +89,7 @@ def _youtube_reviews(title: str, settings: Settings) -> list[dict[str, str]]:
                 "title": str(snippet.get("title", ""))[:200],
                 "channel": str(snippet.get("channelTitle", ""))[:120],
                 "url": f"https://www.youtube.com/watch?v={video_id}",
+                "thumbnail": f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
             }
         )
     return reviews
@@ -184,8 +186,13 @@ def enrich_deal(db_path: str, deal_id: int, settings: Settings) -> dict[str, Any
             deal.get("base_price"), deal.get("coupon_discount"), deal.get("payment_bonus")
         )
         problems = publication_problems(deal)
+        pack = conn.execute("SELECT * FROM studio_packages WHERE deal_id=?", (deal_id,)).fetchone()
+        if pack and (not pack["approved"] or pack["fingerprint"] != digest(deal)):
+            problems.append("Deal- und Social-Texte fehlen in aktueller Freigabe. Im gemeinsamen Editor prüfen und freigeben.")
         reviewed = approved_summary(db_path, deal)
-        deal["review_summary"] = (reviewed + " Kein eigener Produkttest.") if reviewed else _summary(deal)
+        if pack and pack["approved"] and pack["fingerprint"] == digest(deal):
+            reviewed = json.loads(pack["texts"])["summary"]
+        deal["review_summary"] = (reviewed if "Kein eigener Produkttest." in reviewed else reviewed + " Kein eigener Produkttest.") if reviewed else _summary(deal)
         deal["enrichment_status"] = "needs_input" if problems else "ready"
         deal["enrichment_notes"] = " ".join(dict.fromkeys(problems + notes))
         conn.execute(
