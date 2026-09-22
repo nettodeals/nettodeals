@@ -1,3 +1,15 @@
+# NettoDeals 3.5.0 – Händlerlink, Gemini und Social-Studio
+
+- Händler-Produktlinks als Entwurf importieren (JSON-LD und Open-Graph; kein Toppreise-Crawling).
+- Öffentliche HTTPS-Ziele mit DNS-Pinning, TLS-Prüfung, privaten Netzsperren und Dateigrössenlimits.
+- Gemeinsamer Editor: Produktdaten, optional Gemini, menschliche Textfreigabe, Veröffentlichung.
+- Kostenlos nutzbarer Vorlagenbetrieb ohne KI; optional Gemini 2.5 Flash-Lite mit zehn Versuchen pro UTC-Tag/Datenbank.
+- Aurora-Produktkarten lokal in 1080 × 1350 und 1080 × 1920; Social-Texte und ZIP-Export.
+- Separate Händler-Vergleichspreise und Hersteller-UVP; Rundung vereinheitlicht.
+- Tabs im Admin, einzelne HTML-/MHT-Quelle ausreichend, YouTube-Thumbnails.
+- Vorbereitete Pakete werden bei Datenänderung gesperrt; vorhandene Deals und Groq-Daten bleiben erhalten.
+- Datenbankmigration additiv. Vor Deployment Datenbank sichern. Siehe UPDATE-3.5.0.md.
+
 # NettoDeals 3.4.1 – Groq-Redaktionspilot
 
 - Optionaler Textassistent mit festem API-Endpunkt und strukturierten Antworten.

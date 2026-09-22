@@ -565,3 +565,10 @@ details.admin-panel > summary { cursor: pointer; font-weight: 800; }
 .draft-actions form { min-width: 130px; }
 .detail-offer .found-at strong { display: inline; font-size: inherit; }
 @media (max-width: 619px) { .draft-actions { max-width: none; } .deal-card { padding: 16px; } }
+
+/* Editorial studio: mobile navigation and restrained Aurora previews. */
+.admin-tabs{display:flex;gap:.5rem;overflow-x:auto;padding:.75rem 0;margin:1rem 0;position:sticky;top:0;background:rgba(247,248,255,.96);z-index:3}
+.admin-tabs a{white-space:nowrap;padding:.7rem 1rem;border:1px solid #d9daf0;border-radius:999px;color:#243252;text-decoration:none}
+.admin-tabs a[aria-current],.admin-tabs a:hover{background:linear-gradient(110deg,#e1efff,#eee3ff);border-color:#8e85ce}
+[data-admin-panel][hidden]{display:none!important}.studio-main{max-width:1100px}.studio-main h1{overflow-wrap:anywhere;font-size:clamp(1.6rem,4vw,2.5rem)}
+.studio-main textarea{width:100%;box-sizing:border-box}.studio-images{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}.studio-images figure{margin:0}.studio-images img{max-width:100%;height:auto;border-radius:20px}.admin-main{min-width:0}.admin-header{gap:1rem;flex-wrap:wrap}.review-links img{width:240px;max-width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;display:block}.review-links ul{display:flex;flex-wrap:wrap;gap:1.5rem;list-style:none;padding:0}.review-links li{max-width:260px}

@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin · NettoDeals</title>
-  <link rel="stylesheet" href="/static/app.css?v=3.4.0">
+  <link rel="stylesheet" href="/static/app.css?v=3.5.0">
   <script src="/static/app.js?v=3.4.0" defer></script>
+  <script src="/static/studio.js" defer></script>
 </head>
 <body class="admin-body">
   <header class="admin-header">
@@ -36,22 +37,17 @@
     {% if result %}<div class="notice success" role="status">Synchronisierung beendet: {{ result.sources|length }} Quellen verarbeitet.</div>{% endif %}
     {% if import_result %}<div class="notice success" role="status">{{ import_result }}</div>{% endif %}
 
-    <section class="admin-panel"><span class="section-kicker">Ein Workflow für alle Angebote</span><h2>Deals automatisch veröffentlichen</h2><p>Ein normaler Shoplink genügt. YouTube und Affiliate-Partnerschaften sind optional. Preis, Produktbild und Bildrechte prüfen, dann sofort veröffentlichen oder für den Zeitplan freigeben.</p>
-      <form action="/admin/deal-schedule" method="post" class="deal-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label class="check-row"><input type="checkbox" name="enabled" value="yes" {% if deal_schedule.enabled %}checked{% endif %}>Zeitplan aktivieren</label><label>Intervall<select name="hours">{% for hours in [6,12,24] %}<option value="{{ hours }}" {% if deal_schedule.interval_hours == hours %}selected{% endif %}>Alle {{ hours }} Stunden</option>{% endfor %}</select></label><button class="primary-button">Zeitplan speichern</button></form>
-      <p>Veröffentlicht nur vollständig freigegebene Deals. Preisprüfung maximal 48 Stunden alt. Nächster Zeitslot (UTC): {{ deal_schedule.next_run_at or 'nach Aktivierung' }}.</p>
-    </section>
-
-    <details class="admin-panel" open>
+<nav class="admin-tabs" aria-label="Kontrollzentrum">{% for id,label in [('import','Quellen & Import'),('drafts','Entwürfe'),('social','Social Media'),('schedule','Zeitplan'),('live','Veröffentlicht'),('archive','Archiv'),('system','Systemstatus')] %}<a href="#{{ id }}">{{ label }}</a>{% endfor %}</nav><div data-admin-panel id="import"><section class="admin-panel"><span class="section-kicker">Händlerlink statt Handarbeit</span><h2>Deal aus einem Angebot erstellen</h2><p>Direkten Produktlink des Händlers einfügen. Erkannte Daten werden übernommen; fehlende Angaben lassen sich ergänzen. Es findet kein automatischer Toppreise-Abruf statt.</p><form action="/admin/merchant/import" method="post" class="deal-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label class="wide">HTTPS-Händlerlink<input name="url" type="url" maxlength="2048" placeholder="https://www.shop.ch/produkt/..." required></label><button class="primary-button">Angebot als Entwurf übernehmen</button></form></section>    <details class="admin-panel" open>
       <summary>Toppreise-Auswahl importieren</summary>
       <div class="import-help">
         <p>Speichere zuerst <a href="https://www.toppreise.ch/topprodukte" target="_blank" rel="noopener noreferrer nofollow">Top 100 ↗</a>. Wähle danach bei <a href="https://www.toppreise.ch/neue-toppreise" target="_blank" rel="noopener noreferrer nofollow">Neue Toppreise ↗</a> den Zeitraum <strong>48 Stunden</strong> und speichere auch diese Seite.</p>
-        <p>HTML sowie Android-MHT-/MHTML-Webarchive werden unterstützt. Für konkrete Deals ist ein Händlerlink nötig, für einen redaktionellen Steckbrief nicht. Unter „Redaktion &amp; Social“ kannst du importierte Titel als Steckbriefe vormerken. Importpreise und Toppreise-Bilder werden dabei nicht veröffentlicht. Beachte die Nutzungsrechte der Quelle.</p>
+        <p>Eine einzelne Datei genügt; HTML und Android-MHT-/MHTML werden unterstützt. Die 48-Stunden-Bestätigung ist nur für die zweite Datei nötig. Importierte Signale bleiben Entwürfe. Händlerdaten und Bildrechte vor Veröffentlichung prüfen.</p>
       </div>
       <form action="/admin/toppreise/import" method="post" enctype="multipart/form-data" class="snapshot-form">
         <input type="hidden" name="csrf" value="{{ csrf_token }}">
-        <label>HTML/MHTML „Top 100“<input name="top100_file" type="file" accept=".html,.htm,.mht,.mhtml,text/html,multipart/related,application/x-mimearchive" required></label>
-        <label>HTML/MHTML „Neue Toppreise – 48 Stunden“<input name="new48_file" type="file" accept=".html,.htm,.mht,.mhtml,text/html,multipart/related,application/x-mimearchive" required></label>
-        <label class="confirm-row"><input name="confirm_48" type="checkbox" value="yes" required><span>Ich habe vor dem Speichern der zweiten Seite „48 Stunden“ ausgewählt.</span></label>
+        <label>HTML/MHTML „Top 100“<input name="top100_file" type="file" accept=".html,.htm,.mht,.mhtml,text/html,multipart/related,application/x-mimearchive"></label>
+        <label>HTML/MHTML „Neue Toppreise – 48 Stunden“<input name="new48_file" type="file" accept=".html,.htm,.mht,.mhtml,text/html,multipart/related,application/x-mimearchive"></label>
+        <label class="confirm-row"><input name="confirm_48" type="checkbox" value="yes"><span>Ich habe vor dem Speichern der zweiten Seite „48 Stunden“ ausgewählt.</span></label>
         <button class="primary-button" type="submit">Als Entwürfe importieren</button>
       </form>
     </details>
@@ -80,7 +76,7 @@
       </form>
     </details>
 
-    <section class="admin-panel">
+</div><div data-admin-panel id="drafts">    <section class="admin-panel">
       <div class="panel-heading"><div><span class="section-kicker">Moderation</span><h2>Entwürfe</h2></div><b>{{ drafts|length }}</b></div>
       {% if drafts %}
       <div class="draft-list">
@@ -89,7 +85,7 @@
           <div class="draft-copy">
             <span class="source-label">{{ deal.source }}</span>
             <h3>{{ deal.title }}</h3>
-            <p><a href="/admin/deals/{{ deal.id }}/ai">Mit KI vorbereiten – Groq-Pilot →</a></p>
+            <p><a href="/admin/studio/{{ deal.id }}">Deal + Social vorbereiten →</a></p>
             {% if deal.image_url %}<img class="admin-product-preview" src="{{ deal.image_url }}" alt="Bildvorschau: {{ deal.title }}" loading="lazy" referrerpolicy="no-referrer">{% endif %}
             <p class="research-links"><a href="https://www.google.com/search?tbm=isch&amp;q={{ deal.title|urlencode }}" target="_blank" rel="noopener noreferrer">Produktbild recherchieren ↗</a> · <a href="https://www.google.com/search?q={{ (deal.title ~ ' Hersteller UVP')|urlencode }}" target="_blank" rel="noopener noreferrer">Hersteller &amp; UVP suchen ↗</a></p>
             <p>Bildsuche liefert Fundstellen, keine Nutzungserlaubnis. Direkte Bild-URL vom Rechtegeber verwenden; Google-Vorschaubilder nicht übernehmen.</p>
@@ -135,7 +131,12 @@
       {% else %}<p class="panel-empty">Keine offenen Entwürfe.</p>{% endif %}
     </section>
 
-    <section class="admin-panel">
+</div><div data-admin-panel id="social"><section class="admin-panel"><h2>Social-Media-Pakete</h2><p>Texte, Feed-Grafik und Story-Grafik gemeinsam vorbereiten und als ZIP herunterladen. Es wird nichts automatisch auf Social Media gepostet.</p>{% for deal in published + drafts %}<article class="draft-card"><div><h3>{{ deal.title }}</h3><p>{{ deal.status }} · {{ deal.shop_name }}</p></div><a href="/admin/studio/{{ deal.id }}#graphics">Social-Paket öffnen →</a></article>{% else %}<p>Noch keine Deals.</p>{% endfor %}</section></div><div data-admin-panel id="schedule">    <section class="admin-panel"><span class="section-kicker">Ein Workflow für alle Angebote</span><h2>Deals automatisch veröffentlichen</h2><p>Ein normaler Shoplink genügt. YouTube und Affiliate-Partnerschaften sind optional. Preis, Produktbild und Bildrechte prüfen, dann sofort veröffentlichen oder für den Zeitplan freigeben.</p>
+      <form action="/admin/deal-schedule" method="post" class="deal-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label class="check-row"><input type="checkbox" name="enabled" value="yes" {% if deal_schedule.enabled %}checked{% endif %}>Zeitplan aktivieren</label><label>Intervall<select name="hours">{% for hours in [6,12,24] %}<option value="{{ hours }}" {% if deal_schedule.interval_hours == hours %}selected{% endif %}>Alle {{ hours }} Stunden</option>{% endfor %}</select></label><button class="primary-button">Zeitplan speichern</button></form>
+      <p>Veröffentlicht nur vollständig freigegebene Deals. Preisprüfung maximal 48 Stunden alt. Nächster Zeitslot (UTC): {{ deal_schedule.next_run_at or 'nach Aktivierung' }}.</p>
+    </section>
+
+</div><div data-admin-panel id="live">    <section class="admin-panel">
       <div class="panel-heading"><div><span class="section-kicker">Live</span><h2>Veröffentlichte Deals</h2></div><b>{{ published|length }}</b></div>
       <div class="draft-list">
         {% for deal in published %}
@@ -144,7 +145,7 @@
       </div>
     </section>
 
-    <section class="admin-panel">
+</div><div data-admin-panel id="archive">    <section class="admin-panel">
       <div class="panel-heading"><div><span class="section-kicker">Historie</span><h2>Vergangene Deals</h2></div><b>{{ expired|length }}</b></div>
       <div class="draft-list">
         {% for deal in expired %}
@@ -153,7 +154,7 @@
       </div>
     </section>
 
-    <section class="admin-panel">
+</div><div data-admin-panel id="system"><section class="admin-panel"><h2>KI &amp; Medien</h2><p>Gemini: {{ "Schlüssel hinterlegt" if gemini_configured else "nicht konfiguriert – Textvorlagen aktiv" }} · Modell {{ gemini_model }}</p><p>YouTube: {{ "Schlüssel hinterlegt" if youtube_configured else "optional, kein Schlüssel" }}</p><p>Ein hinterlegter Schlüssel bestätigt noch keine Verbindung. Im Deal-Editor testen; Fehler erscheinen dort. Aurora-Bilder benötigen keinen KI-Dienst.</p></section>    <section class="admin-panel">
       <div class="panel-heading"><div><span class="section-kicker">Betrieb</span><h2>Letzte Importe</h2></div></div>
       <div class="log-list">
         {% for log in logs %}
@@ -161,6 +162,6 @@
         {% else %}<p class="panel-empty">Noch keine Importe protokolliert.</p>{% endfor %}
       </div>
     </section>
-  </main>
+</div>  </main>
 </body>
 </html>

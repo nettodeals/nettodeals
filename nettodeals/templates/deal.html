@@ -64,7 +64,7 @@
     <section class="detail-note review-links">
       <h2>Passende Videos auf YouTube</h2>
       <p>Automatisch gefundene Suchtreffer. Modellzuordnung, Unabhängigkeit und Aussagen wurden nicht durch NettoDeals geprüft.</p>
-      <ul>{% for video in deal.youtube_reviews_list %}<li><a href="{{ video.url }}" target="_blank" rel="noopener noreferrer nofollow">{{ video.title }}</a><small>{{ video.channel }}</small></li>{% endfor %}</ul>
+      <ul>{% for video in deal.youtube_reviews_list %}<li><a href="{{ video.url }}" target="_blank" rel="noopener noreferrer nofollow"><img src="{{ video.thumbnail }}" alt="Vorschaubild: {{ video.title }}" loading="lazy" referrerpolicy="no-referrer">{{ video.title }}</a><small>{{ video.channel }}</small></li>{% endfor %}</ul>
     </section>
     {% endif %}
 

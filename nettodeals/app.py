@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sqlite3
 from contextlib import asynccontextmanager, suppress
 from html import escape
@@ -47,6 +48,7 @@ from .security import (
 )
 from .seo import deal_path, display_datetime, slugify
 from .services import DealCandidate, SyncService, safe_money, source_id
+from .studio_routes import register_studio_routes
 from .toppreise import (
     MAX_UPLOAD_BYTES,
     MIN_NEW48_ITEMS,
@@ -109,11 +111,20 @@ def _deal_dict(row: sqlite3.Row) -> dict[str, Any]:
     uvp = safe_money(deal.get("manufacturer_uvp"))
     price = safe_money(deal.get("effective_price"))
     deal["uvp_saving"] = round(uvp - price, 2) if deal.get("uvp_source_url") and uvp > price > 0 else 0
-    deal["uvp_discount_percent"] = int((uvp - price) / uvp * 100) if deal["uvp_saving"] else 0
+    deal["uvp_discount_percent"] = round((uvp - price) / uvp * 100) if deal["uvp_saving"] else 0
     try:
         deal["youtube_reviews_list"] = json.loads(deal.get("youtube_reviews") or "[]")
     except (TypeError, json.JSONDecodeError):
         deal["youtube_reviews_list"] = []
+    valid_videos = []
+    for video in deal["youtube_reviews_list"] if isinstance(deal["youtube_reviews_list"], list) else []:
+        if not isinstance(video, dict):
+            continue
+        match = re.fullmatch(r"https://www.youtube.com/watch\?v=([A-Za-z0-9_-]{11})", str(video.get("url", "")))
+        if match:
+            video["thumbnail"] = f"https://i.ytimg.com/vi/{match[1]}/hqdefault.jpg"
+            valid_videos.append(video)
+    deal["youtube_reviews_list"] = valid_videos
     deal["is_expired"] = deal.get("status") == "expired"
     return deal
 
@@ -180,7 +191,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.4.1",
+        version="3.5.0",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -190,6 +201,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sync_service = sync_service
     register_brief_routes(app, settings, _render, _session_cookie, _verify_csrf)
     register_ai_routes(app, settings, _render, _session_cookie, _verify_csrf)
+    register_studio_routes(app, settings, _render, _session_cookie, _verify_csrf)
     if settings.allowed_hosts != ("*",):
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -440,8 +452,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.4.1",
+            "version": "3.5.0",
             "sources": sync_service.configured_sources(),
+            "gemini_configured": bool(settings.gemini_api_key),
+            "gemini_model": settings.gemini_model,
+            "youtube_configured": bool(settings.youtube_api_key),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,
         }
@@ -514,6 +529,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "deal_queue": queue,
             "counts": {row["status"]: row["count"] for row in counts},
             "sources": sync_service.configured_sources(),
+            "gemini_configured": bool(settings.gemini_api_key),
+            "gemini_model": settings.gemini_model,
+            "youtube_configured": bool(settings.youtube_api_key),
             "csrf_token": csrf_token(settings.admin_token, cookie),
             **extra,
         }
@@ -534,19 +552,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def import_toppreise_snapshots(
         request: Request,
         csrf: Annotated[str, Form()],
-        top100_file: Annotated[UploadFile, File()],
-        new48_file: Annotated[UploadFile, File()],
-        confirm_48: Annotated[str, Form()],
+        top100_file: Annotated[UploadFile | None, File()] = None,
+        new48_file: Annotated[UploadFile | None, File()] = None,
+        confirm_48: Annotated[str, Form()] = "no",
     ):
         _verify_csrf(request, settings, csrf)
-        if confirm_48 != "yes":
-            raise HTTPException(status_code=422, detail="48-Stunden-Auswahl nicht bestätigt.")
         try:
+            if not top100_file and not new48_file:
+                raise SnapshotError("Bitte mindestens eine HTML-/MHTML-Datei auswählen.")
+            if new48_file and confirm_48 != "yes":
+                raise SnapshotError("48-Stunden-Auswahl nicht bestätigt.")
             uploads = []
             for upload, collection, label in (
                 (top100_file, "top100", "Top 100"),
                 (new48_file, "new48", "Neue Toppreise (48 Stunden)"),
             ):
+                if not upload:
+                    continue
                 raw = await upload.read(MAX_UPLOAD_BYTES + 1)
                 if len(raw) > MAX_UPLOAD_BYTES:
                     raise SnapshotError(f"Die Datei «{label}» ist grösser als 20 MB.")
@@ -570,8 +592,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=422,
             )
         finally:
-            await top100_file.close()
-            await new48_file.close()
+            if top100_file:
+                await top100_file.close()
+            if new48_file:
+                await new48_file.close()
 
         unique_products: dict[str, DealCandidate] = {}
         changes = {"created": 0, "updated": 0, "unchanged": 0}

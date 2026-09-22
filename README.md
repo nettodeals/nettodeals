@@ -1,4 +1,9 @@
-# NettoDeals.ch 3.4.1 🇨🇭
+# NettoDeals.ch 3.5.0 🇨🇭
+
+Neu: Händlerlink → gemeinsamer Deal-/Social-Editor → Freigabe. Optional Gemini mit
+`GEMINI_API_KEY`; ohne Schlüssel oder bei Fehlern Textvorlagen. Aurora-Bilder werden
+lokal erstellt. Kein automatisches Social-Posting und kein Toppreise-Crawling.
+
 
 ## Groq-Redaktionspilot
 
@@ -22,7 +27,7 @@ Die separate Steckbrief-Kategorie ist von der Startseite entfernt; bestehende
 Artikel und Downloads bleiben über ihre alten URLs erreichbar. Der alte
 Steckbrief-Scheduler läuft nicht mehr. Der neue Deal-Zeitplan ist zunächst aus.
 
-**Aktuelle Anleitung: [UPDATE-3.4.0.md](UPDATE-3.4.0.md)** – einschliesslich Bilder,
+**Aktuelle Anleitung: [UPDATE-3.5.0.md](UPDATE-3.5.0.md)** – einschliesslich Bilder,
 YouTube Data API v3, Termux und Grenzen der Automatisierung.
 
 Die folgenden Versionsabschnitte dokumentieren den früheren Funktionsstand.
