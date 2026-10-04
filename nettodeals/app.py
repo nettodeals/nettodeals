@@ -34,6 +34,8 @@ from .deal_schedule import configure as configure_deals
 from .deal_schedule import enqueue, tick
 from .editorial import is_direct_merchant_url
 from .editorial import publish_deal as publish_enriched_deal
+from .gemini_routes import register_gemini_routes
+from .gemini_settings import status as gemini_status
 from .security import (
     COOKIE_NAME,
     clear_login_failures,
@@ -191,7 +193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.5.0",
+        version="3.5.1",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -202,6 +204,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_brief_routes(app, settings, _render, _session_cookie, _verify_csrf)
     register_ai_routes(app, settings, _render, _session_cookie, _verify_csrf)
     register_studio_routes(app, settings, _render, _session_cookie, _verify_csrf)
+    register_gemini_routes(app, settings, _render, _session_cookie, _verify_csrf)
     if settings.allowed_hosts != ("*",):
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     app.mount("/static", StaticFiles(directory=PACKAGE_DIR / "static"), name="static")
@@ -209,9 +212,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Any):
         response = await call_next(request)
+        # Google tags are loaded by analytics.js only after explicit consent.
+        # Keep the admin/API policy restricted to same-origin scripts/connections.
+        analytics_page = (
+            response.headers.get("content-type", "").startswith("text/html")
+            and not request.url.path.startswith(("/admin", "/api/", "/go/"))
+        )
+        script_sources = "'self'"
+        connect_sources = "'self'"
+        if analytics_page:
+            script_sources += " https://www.googletagmanager.com"
+            connect_sources += (
+                " https://*.google-analytics.com https://*.analytics.google.com"
+                " https://www.googletagmanager.com"
+            )
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data: https:; style-src 'self'; "
-            "script-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; "
+            f"script-src {script_sources}; connect-src {connect_sources}; "
+            "font-src 'self'; object-src 'none'; "
             "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         )
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -452,10 +470,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.5.0",
+            "version": "3.5.1",
             "sources": sync_service.configured_sources(),
-            "gemini_configured": bool(settings.gemini_api_key),
-            "gemini_model": settings.gemini_model,
+            "gemini_configured": gemini_status(settings)["configured"],
+            "gemini_model": gemini_status(settings)["model"],
             "youtube_configured": bool(settings.youtube_api_key),
             "automatic_sync": settings.auto_sync_enabled,
             "last_successful_sync": last_sync["at"] if last_sync else None,
@@ -529,8 +547,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "deal_queue": queue,
             "counts": {row["status"]: row["count"] for row in counts},
             "sources": sync_service.configured_sources(),
-            "gemini_configured": bool(settings.gemini_api_key),
-            "gemini_model": settings.gemini_model,
+            "gemini_configured": gemini_status(settings)["configured"],
+            "gemini_model": gemini_status(settings)["model"],
             "youtube_configured": bool(settings.youtube_api_key),
             "csrf_token": csrf_token(settings.admin_token, cookie),
             **extra,

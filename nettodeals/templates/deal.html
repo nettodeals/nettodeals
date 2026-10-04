@@ -18,6 +18,8 @@
   <title>{{ deal.title }}{% if deal.effective_price > 0 %} {% if deal.price_type == 'from' %}ab {% endif %}CHF {{ "%.2f"|format(deal.effective_price) }}{% endif %} – NettoDeals</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css?v=3.4.0">
+  <link rel="stylesheet" href="/static/analytics.css?v=1">
+  <script src="/static/analytics.js?v=1" defer></script>
 </head>
 <body>
   <div class="aurora aurora-one" aria-hidden="true"></div>
@@ -83,5 +85,6 @@
     <nav class="footer-links" aria-label="Informationen"><a href="/ueber-nettodeals">Über uns</a><a href="/redaktion">Redaktion</a><a href="/datenschutz">Datenschutz</a><a href="/impressum">Impressum</a></nav>
     <p class="footer-small">© 2026 NettoDeals · Preis- und Verfügbarkeitsänderungen vorbehalten.</p>
   </footer>
+{% include "analytics_consent.html" %}
 </body>
 </html>

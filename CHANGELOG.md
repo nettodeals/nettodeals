@@ -1,3 +1,16 @@
+# NettoDeals 3.5.1 – Gemini im Admin und Analytics mit Einwilligung
+
+- Gemini-Schlüssel und Modell direkt im authentifizierten Adminbereich speichern.
+- Fernet-Verschlüsselung mit vom vorhandenen Admin-Token abgeleitetem Schlüssel.
+- CSRF-Schutz, keine Schlüsselrückgabe, sofort wirksam ohne ENV-Änderung oder Neustart.
+- Server-Verbindungstest mit Texterzeugung und festen, geheimnisfreien Fehlermeldungen.
+- Gemeinsames Limit für Gemini-Tests und Deal-Entwürfe: 10 Versuche pro UTC-Tag/Datenbank.
+- Gemini deaktivieren/entfernen; eine gespeicherte Deaktivierung verhindert ENV-Rückfall.
+- Standardmodell gemini-3.1-flash-lite; Modell im Admin anpassbar.
+- Vollständiges Analytics-Update: Aurora-Einwilligung, Widerruf, Admin-Ausschluss, CSP.
+- Keine Löschung bestehender Deals; additive Datenbankmigration.
+- Neu: cryptography==50.0.2 für serverseitige Schlüsselverschlüsselung.
+
 # NettoDeals 3.5.0 – Händlerlink, Gemini und Social-Studio
 
 - Händler-Produktlinks als Entwurf importieren (JSON-LD und Open-Graph; kein Toppreise-Crawling).

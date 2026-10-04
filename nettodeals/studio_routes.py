@@ -13,6 +13,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from .db import connection, now_iso, upsert_deal
 from .editorial import _youtube_reviews, is_direct_merchant_url, publish_deal
+from .gemini_settings import status as gemini_status
 from .merchant import fetch_public, parse_product
 from .security import csrf_token, normalize_external_url
 from .services import DealCandidate, safe_money
@@ -36,8 +37,8 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
         with connection(settings.db_path) as conn:
             count = conn.execute('SELECT count(*) FROM studio_attempts WHERE created_at>=?', (now_iso()[:10],)).fetchone()[0]
         return render('studio.html', deal=deal, pack=pack, texts=texts, stale=stale,
-                      message=message, error=error, gemini=bool(settings.gemini_api_key),
-                      model=settings.gemini_model, used=count, csrf_token=csrf_token(settings.admin_token, cookie))
+                      message=message, error=error, gemini=gemini_status(settings)["configured"],
+                      model=gemini_status(settings)["model"], used=count, csrf_token=csrf_token(settings.admin_token, cookie))
 
     @app.post('/admin/merchant/import')
     def merchant_import(request: Request, csrf: Annotated[str, Form()], url: Annotated[str, Form()]):
@@ -114,7 +115,7 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
         if use_gemini == 'yes':
             try:
                 copy = gemini_copy(settings, deal)
-                provider = settings.gemini_model
+                provider = gemini_status(settings)["model"]
             except ValueError as exc:
                 notes.append(str(exc))
         texts = package_texts(deal, settings, copy)

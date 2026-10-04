@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de-CH"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>Gemini einrichten · NettoDeals</title>
+<link rel="stylesheet" href="/static/app.css?v=3.5.1"></head>
+<body class="admin-body"><header class="admin-header"><a class="brand" href="/">NettoDeals <small>CH</small></a><a href="/admin#system">← Kontrollzentrum</a></header>
+<main class="admin-main studio-main">
+<span class="section-kicker">KI-Einstellungen</span><h1>Gemini einrichten</h1>
+<p>Hier kannst du deinen API-Schlüssel hinterlegen. Eine Eingabe in Orbit oder ein Neustart ist dafür nicht nötig.</p><p>Aktuell erreichte Instanz: <code>{{ instance }}</code></p>
+{% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}
+{% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
+{% if gemini.error %}<p class="notice error" role="alert">{{ gemini.error }}</p>{% endif %}
+<section class="admin-panel"><h2>1. Schlüssel speichern</h2>
+<p>Status: <strong>{{ "Schlüssel verfügbar" if gemini.configured else "nicht aktiv" }}</strong> · Quelle: {{ gemini.source }}{% if gemini.updated_at %} · gespeichert {{ gemini.updated_at }}{% endif %}</p>
+<p>Erstelle einen Schlüssel in <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Google AI Studio ↗</a>.
+Für den kostenlosen Versuch ein Projekt im Free Tier verwenden. Die App kann den Abrechnungstarif nicht erkennen oder Kosten bei einem kostenpflichtigen Projekt verhindern.</p>
+<form action="/admin/settings/gemini/save" method="post" class="deal-form" autocomplete="off">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<label class="wide">Gemini-API-Schlüssel<input type="password" name="api_key" maxlength="256" autocomplete="new-password" spellcheck="false" autocapitalize="none" placeholder="Neuen Schlüssel einfügen; leer lassen = vorhandenen behalten"></label>
+<label class="wide">Modell-ID<input name="model" value="{{ gemini.model }}" maxlength="80" required spellcheck="false" autocapitalize="none"><small>Zum Beispiel gemini-3.1-flash-lite. Modellverfügbarkeit und kostenloses Kontingent in deinem Google-Projekt prüfen.</small></label>
+<label class="check-row wide"><input type="checkbox" name="enabled" value="yes" {% if gemini.configured %}checked{% endif %}>Gemini aktivieren</label>
+<p class="wide">Der Schlüssel wird verschlüsselt in der App-Datenbank gespeichert und nie im Formular zurückgegeben. Der vorhandene Admin-Token schützt die Verschlüsselung. Nach dessen Änderung den Schlüssel erneut speichern.</p>
+<button class="primary-button wide">Einstellungen speichern</button>
+</form></section>
+<section class="admin-panel"><h2>2. Verbindung testen</h2>
+<p>Dieser Test sendet eine kurze Testnachricht vom Server an Google. Er prüft tatsächliche Texterzeugung, nicht nur die Existenz des Schlüssels.
+Zusammen mit Deal-Entwürfen sind höchstens 10 API-Versuche pro UTC-Tag und Datenbank erlaubt; auch fehlgeschlagene Versuche zählen. Heute: {{ used }}/10.</p>
+<form action="/admin/settings/gemini/test" method="post" class="deal-form">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<label class="check-row wide"><input type="checkbox" name="confirmed" value="yes" required>Gespeicherte Einstellungen mit einem API-Aufruf testen; Google-Tarif geprüft.</label>
+<button class="primary-button" {% if not gemini.configured %}disabled{% endif %}>Verbindung testen</button>
+</form></section>
+<section class="admin-panel"><h2>3. Deal und Social-Beiträge vorbereiten</h2>
+<p>Unter <a href="/admin#drafts">Entwürfe</a> einen Deal im Deal-&amp;-Social-Editor öffnen. Fakten prüfen, „Gemini verwenden“ auswählen und „Deal + Social vorbereiten“ drücken. Texte anschliessend prüfen und freigeben. Bei Fehlern stehen Textvorlagen zur Verfügung.</p>
+<p>Bei mehreren Flux-Instanzen mit getrennten Datenbanken gilt der gespeicherte Schlüssel nur auf der jeweils erreichten Instanz. Ohne gemeinsame Datenhaltung musst du jede Instanz separat konfigurieren. Die Einstellungen bleiben nur erhalten, solange das Datenbank-Volume erhalten bleibt.</p>
+</section>
+<details class="admin-panel"><summary>Schlüssel entfernen</summary>
+<form action="/admin/settings/gemini/delete" method="post" class="deal-form">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<label class="check-row wide"><input type="checkbox" name="confirmed" value="yes" required>Gespeicherten Schlüssel entfernen und Gemini deaktivieren.</label>
+<button class="text-button">Schlüssel entfernen</button>
+</form></details>
+</main></body></html>

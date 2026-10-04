@@ -15,6 +15,8 @@
   <title>{{ title }} – NettoDeals</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css?v=3.3.0">
+  <link rel="stylesheet" href="/static/analytics.css?v=1">
+  <script src="/static/analytics.js?v=1" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -37,9 +39,14 @@
       <h2>Ablauf und Korrekturen</h2><p>Deals laufen standardmässig nach 48 Stunden ab und bleiben ausgegraut als historische Preisreferenz sichtbar. Der Kaufbutton wird entfernt. Freigegebene Deals können zeitversetzt erscheinen, sofern ihre Preisprüfung höchstens 48 Stunden zurückliegt. Frühere Produkt-Steckbriefe bleiben unter ihren bisherigen Adressen erhalten. Fehlerhafte Angaben werden nach Bekanntwerden korrigiert. Hinweise bitte an die Kontaktadresse im Impressum.</p>
       <h2>KI-Unterstützung</h2><p>Redaktionelle Textentwürfe können KI-unterstützt aus Produktangaben entstehen und werden vor der Veröffentlichung geprüft. Sie ersetzen keinen eigenen Produkttest. Händler-Stattpreise und Hersteller-UVP werden getrennt gekennzeichnet.</p>
     {% elif page_name == 'datenschutz' %}
-      <p class="lead">NettoDeals verwendet auf der öffentlichen Website keine Nutzerprofile und keine personalisierte Werbung.</p>
+      <p class="lead">NettoDeals verwendet Google Analytics nur nach deiner Zustimmung zur Reichweitenmessung. Die Website bleibt auch ohne Zustimmung vollständig nutzbar. Wir aktivieren keine personalisierte Werbung.</p>
       <h2>Serverzugriffe</h2><p>Beim Aufruf der Website können der Hostinganbieter und vorgeschaltete Netzdienste technisch erforderliche Verbindungsdaten wie IP-Adresse, Zeitpunkt, Zieladresse und Browserkennung in Serverprotokollen verarbeiten. Umfang und Aufbewahrung richten sich nach der eingesetzten Hostingkonfiguration.</p>
       <h2>Interessen-Signale</h2><p>Ausgehende Deal-Aufrufe werden ausschließlich als tägliche Anzahl pro Angebot gespeichert. NettoDeals speichert dabei keine IP-Adresse, kein Nutzerkonto und keine individuelle Klickhistorie in der Anwendungsdatenbank.</p>
+      <h2>Optionale Reichweitenmessung mit Google Analytics</h2>
+      <p>Nach deiner Zustimmung laden wir Google Analytics 4 (Mess-ID G-GQGD9NXG70), einen Dienst von Google Ireland Limited, Gordon House, Barrow Street, Dublin 4, Irland. Dabei werden unter anderem Seitenaufrufe, Browser- und Geräteinformationen und technische Verbindungsdaten an Google übertragen. Analyse-Cookies dienen der Wiedererkennung deines Browsers. Eine Verarbeitung durch Google LLC in den USA ist möglich. Wir verwenden die Auswertungen zur Verbesserung der Website und zur Darstellung unserer Reichweite gegenüber Werbepartnern.</p>
+      <p>Vor deiner Zustimmung und nach einer Ablehnung lädt unsere Analysefunktion keinen Google-Tag. Google Signals und Werbepersonalisierung werden durch unsere Tag-Konfiguration deaktiviert. Wir übergeben Seitenadressen ohne Suchparameter und ohne URL-Fragmente. Der Adminbereich enthält keinen Analytics-Tag. Externe Produkt- und Video-Vorschaubilder werden unabhängig davon wie unten beschrieben geladen.</p>
+      <p>Deine Auswahl wird für 180 Tage lokal in diesem Browser gespeichert. Du kannst sie über „Datenschutz-Einstellungen“ am Seitenende jederzeit ändern. Beim Widerruf stoppen wir die weitere Messung und entfernen die von unserer Integration gesetzten Analyse-Cookies. Bereits übermittelte Daten werden dadurch nicht rückwirkend gelöscht. Die Analyse-Cookies werden auf eine Laufzeit von höchstens 180 Tagen ohne Verlängerung bei jedem Aufruf konfiguriert. Die Aufbewahrungsdauer der Ereignisdaten wird separat in Google Analytics verwaltet.</p>
+      <p>Weitere Informationen: <a href="https://policies.google.com/privacy" rel="noopener noreferrer" target="_blank">Datenschutzerklärung von Google</a>. Bei Fragen zur Verarbeitung wende dich an die Kontaktadresse im Impressum.</p>
       <h2>Admin-Cookie</h2><p>Nur nach einer Admin-Anmeldung wird ein technisch erforderliches, kurzlebiges HttpOnly-Session-Cookie gesetzt. Es dient ausschließlich dem Schutz des Administrationsbereichs.</p>
       <h2>Externe Bilder und Links</h2><p>Autorisierte Produktbilder können direkt von Servern teilnehmender Händler oder Partnernetzwerke geladen werden. Dabei erhält der Bildanbieter technisch bedingt die IP-Adresse des aufrufenden Geräts; ein Referrer wird von NettoDeals nicht mitgesendet. Beim bewussten Öffnen eines Shops, YouTube-Beitrags oder Social-Media-Kanals gelten die Datenschutzbestimmungen des jeweiligen Anbieters. Affiliate-Links können eine Zuordnung zur Provisionsabrechnung enthalten.</p>
       <h2>Verantwortliche Stelle</h2><p>Die vollständigen Kontaktdaten müssen vor Veröffentlichung im Impressum ergänzt werden.</p>
@@ -56,5 +63,6 @@
     <nav class="footer-links" aria-label="Informationen"><a href="/ueber-nettodeals">Über uns</a><a href="/redaktion">Redaktion</a><a href="/datenschutz">Datenschutz</a><a href="/impressum">Impressum</a></nav>
     <p class="footer-small">© 2026 NettoDeals</p>
   </footer>
+{% include "analytics_consent.html" %}
 </body>
 </html>

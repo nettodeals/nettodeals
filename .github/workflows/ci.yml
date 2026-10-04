@@ -20,5 +20,9 @@ jobs:
       - run: ruff check .
       - run: python -m compileall -q main.py nettodeals tests
       - run: python -m pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/analytics_consent.test.cjs
       - run: bandit -q -r nettodeals main.py
       - run: pip-audit --requirement requirements.txt

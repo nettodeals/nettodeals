@@ -129,6 +129,9 @@ def init_db(db_path: str) -> None:
                 conn.execute(f'ALTER TABLE deals ADD COLUMN "{name}" {definition}')
 
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS gemini_settings (
+                id INTEGER PRIMARY KEY CHECK(id=1), encrypted TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS studio_packages (
                 deal_id INTEGER PRIMARY KEY REFERENCES deals(id) ON DELETE CASCADE,
                 fingerprint TEXT NOT NULL, texts TEXT NOT NULL, provider TEXT NOT NULL,

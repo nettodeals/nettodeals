@@ -21,7 +21,7 @@
 <label class="check-row wide"><input name="rights" type="checkbox" value="yes" {% if deal.image_rights_confirmed %}checked{% endif %}>Nutzungsrecht des Bildes für Website und Social Media geprüft</label>
 <label class="check-row wide"><input name="checked" type="checkbox" value="yes">Preis, Lieferkosten, Verfügbarkeit und genaue Variante jetzt beim Händler geprüft</label>
 <label class="check-row wide"><input name="use_gemini" type="checkbox" value="yes" {% if not gemini %}disabled{% endif %}>Gemini verwenden: öffentliche Produktfakten an Google senden und Textentwürfe erstellen</label>
-<p class="wide">{% if gemini %}Modell: {{ model }} · {{ used }}/10 API-Versuche heute (UTC).{% else %}Ohne GEMINI_API_KEY werden Textvorlagen verwendet.{% endif %} Kein eigener Produkttest. Bei API-Fehlern bleiben Vorlagen verfügbar. Kostenlosen API-Tarif im Google-Konto prüfen; die App kann deinen Abrechnungstarif nicht erkennen.</p>
+<p class="wide">{% if gemini %}Modell: {{ model }} · {{ used }}/10 API-Versuche heute (UTC).{% else %}Gemini ist nicht aktiv. <a href="/admin/settings/gemini">API-Schlüssel hier hinterlegen</a>; bis dahin werden Textvorlagen verwendet.{% endif %} <a href="/admin/settings/gemini">Gemini-Einstellungen &amp; Verbindungstest</a>. Kein eigener Produkttest. Bei API-Fehlern bleiben Vorlagen verfügbar. Kostenlosen API-Tarif im Google-Konto prüfen; die App kann deinen Abrechnungstarif nicht erkennen.</p>
 <button class="primary-button wide">Deal + Social vorbereiten</button></form>{% else %}<p>Veröffentlichte Inhalte werden hier nicht überschrieben. Zum Überarbeiten im Kontrollzentrum beenden und neu prüfen.</p>{% endif %}
 </section>
 <section class="admin-panel" id="copy"><h2>Texte prüfen und bearbeiten</h2>
