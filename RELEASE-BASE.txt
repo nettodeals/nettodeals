@@ -1,3 +1,1 @@
-Repository: https://github.com/nettodeals/nettodeals
-Base commit: 73896d549557ea6bfe92ecf1209c6ef7cebbb9b1
-Release: 3.5.0
+836dfc00a1d30b8a0582776633f7ba486e89c44f

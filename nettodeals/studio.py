@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 
 from .ai_editor import FIELDS, PROMPT, validate_payload
 from .db import connection, now_iso
+from .gemini_settings import effective_settings
 from .merchant import fetch_public
 from .seo import deal_path
 from .social_cards import _font, _wrap
@@ -30,7 +31,18 @@ def comparison(deal):
     return 0, ''
 
 
-def gemini_copy(settings, deal):
+def gemini_http_error(code):
+    messages = {
+        400: "Anfrage abgelehnt. API-Schlüssel, Modell und Projektkonfiguration prüfen.",
+        401: "API-Schlüssel ungültig oder nicht autorisiert.",
+        403: "Zugriff verweigert. Schlüsselbeschränkungen, Projekt-/Regionsfreigabe oder Hosting-Verbindung prüfen; keine bestätigte Modellsperre.",
+        404: "Modell nicht gefunden oder für dieses Projekt nicht verfügbar. Modell-ID in den Gemini-Einstellungen ändern.",
+        429: "Google-Kontingent oder Anfragelimit erreicht. Free-Tier-Limit im Google-Projekt prüfen und später erneut versuchen.",
+    }
+    return f"Gemini HTTP {code}: " + messages.get(code, "Google-Dienst oder Verbindung derzeit nicht verfügbar; später erneut versuchen.")
+
+
+def reserve_gemini_attempt(settings):
     if not settings.gemini_api_key:
         raise ValueError('Gemini nicht konfiguriert; Textvorlagen verwendet.')
     if not re.fullmatch(r'[a-zA-Z0-9.-]{1,80}', settings.gemini_model):
@@ -42,6 +54,11 @@ def gemini_copy(settings, deal):
         if count >= 10:
             raise ValueError('Gemini-Pilotlimit: 10 Aufrufe pro UTC-Tag; Textvorlagen verwendet.')
         conn.execute('INSERT INTO studio_attempts(created_at) VALUES (?)', (now_iso(),))
+
+
+def gemini_copy(settings, deal):
+    settings = effective_settings(settings)
+    reserve_gemini_attempt(settings)
     schema = {'type': 'OBJECT', 'properties': {k: {'type': 'STRING'} for k in FIELDS}, 'required': list(FIELDS)}
     try:
         response = requests.post(
@@ -53,13 +70,13 @@ def gemini_copy(settings, deal):
                                        'maxOutputTokens': 1800, 'temperature': 0.2}},
             timeout=(5, 35), allow_redirects=False)
         if response.status_code != 200:
-            raise ValueError(f'Gemini HTTP {response.status_code}; Textvorlagen verwendet. API-Projekt, Modell und Kontingent prüfen.')
+            raise ValueError(gemini_http_error(response.status_code) + ' Textvorlagen verwendet.')
         candidate = response.json()['candidates'][0]
         if candidate.get('finishReason') != 'STOP':
             raise ValueError('Gemini-Antwort unvollständig; Textvorlagen verwendet.')
         raw = ''.join(p.get('text', '') for p in candidate['content']['parts'] if not p.get('thought'))
         return validate_payload(json.loads(raw))
-    except (requests.RequestException, KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+    except (requests.RequestException, KeyError, IndexError, TypeError, AttributeError, json.JSONDecodeError) as exc:
         raise ValueError('Gemini nicht erreichbar oder Antwort unlesbar; Textvorlagen verwendet.') from exc
 
 

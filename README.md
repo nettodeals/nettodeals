@@ -1,11 +1,21 @@
-# NettoDeals.ch 3.5.0 🇨🇭
+# NettoDeals.ch 3.5.1 🇨🇭
 
-Neu: Händlerlink → gemeinsamer Deal-/Social-Editor → Freigabe. Optional Gemini mit
-`GEMINI_API_KEY`; ohne Schlüssel oder bei Fehlern Textvorlagen. Aurora-Bilder werden
-lokal erstellt. Kein automatisches Social-Posting und kein Toppreise-Crawling.
+Neu in 3.5.1: Gemini direkt unter **Admin → Gemini** einrichten, ohne neue Orbit-ENV.
+Der Schlüssel wird verschlüsselt in der bestehenden Datenbank gespeichert; Verbindungstest,
+Modellwahl, Deaktivierung und Entfernen sind integriert. Bestehende ENV-Konfiguration
+bleibt als Rückfall erhalten, bis im Admin eine eigene Einstellung gespeichert wird.
+
+Google Analytics mit Mess-ID G-GQGD9NXG70 ist auf öffentlichen Seiten nach Einwilligung
+integriert. Aurora-Banner, Widerruf und Admin-Ausschluss sind enthalten.
+
+**Update und Einrichtung: [UPDATE-3.5.1.md](UPDATE-3.5.1.md)**.
+Die Gemini-Aufrufe erfolgen serverseitig; der Schlüssel gehört niemals ins Repository.
+Händlerlink → gemeinsamer Deal-/Social-Editor → Freigabe bleibt erhalten. Ohne Schlüssel
+oder bei Fehlern stehen Textvorlagen bereit. Aurora-Bilder werden lokal erstellt.
+Kein automatisches Social-Posting und kein Toppreise-Crawling.
 
 
-## Groq-Redaktionspilot
+## Früherer Groq-Redaktionspilot (optional, nicht der aktuelle Gemini-Editor)
 
 Im Adminbereich je Entwurf „Mit KI vorbereiten“ wählen. Geprüfte Produktfakten
 werden nach Bestätigung an Groq übermittelt. Der Assistent erstellt editierbare
@@ -27,7 +37,7 @@ Die separate Steckbrief-Kategorie ist von der Startseite entfernt; bestehende
 Artikel und Downloads bleiben über ihre alten URLs erreichbar. Der alte
 Steckbrief-Scheduler läuft nicht mehr. Der neue Deal-Zeitplan ist zunächst aus.
 
-**Aktuelle Anleitung: [UPDATE-3.5.0.md](UPDATE-3.5.0.md)** – einschliesslich Bilder,
+**Grundfunktionen aus 3.5.0: [UPDATE-3.5.0.md](UPDATE-3.5.0.md)** – einschliesslich Bilder,
 YouTube Data API v3, Termux und Grenzen der Automatisierung.
 
 Die folgenden Versionsabschnitte dokumentieren den früheren Funktionsstand.
