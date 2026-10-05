@@ -96,6 +96,13 @@ def init_db(db_path: str) -> None:
         )
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(deals)")}
         migrations = {
+            "social_hook": "TEXT NOT NULL DEFAULT ''",
+            "social_audience": "TEXT NOT NULL DEFAULT ''",
+            "social_benefit": "TEXT NOT NULL DEFAULT ''",
+            "social_caveat": "TEXT NOT NULL DEFAULT ''",
+            "social_question": "TEXT NOT NULL DEFAULT ''",
+            "social_goal": "TEXT NOT NULL DEFAULT 'follow'",
+            "otto_pose": "TEXT NOT NULL DEFAULT 'explain'",
             "comparison_price": "REAL NOT NULL DEFAULT 0",
             "comparison_source": "TEXT NOT NULL DEFAULT ''",
             "expires_at": "TEXT",
@@ -137,6 +144,11 @@ def init_db(db_path: str) -> None:
                 fingerprint TEXT NOT NULL, texts TEXT NOT NULL, provider TEXT NOT NULL,
                 notes TEXT NOT NULL DEFAULT '', feed BLOB, story BLOB,
                 created_at TEXT NOT NULL, approved INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS studio_slides (
+                deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 3),
+                image BLOB NOT NULL, PRIMARY KEY(deal_id,position)
             );
             CREATE TABLE IF NOT EXISTS studio_attempts (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS ai_drafts (

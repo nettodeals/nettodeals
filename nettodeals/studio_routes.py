@@ -17,6 +17,7 @@ from .gemini_settings import status as gemini_status
 from .merchant import fetch_public, parse_product
 from .security import csrf_token, normalize_external_url
 from .services import DealCandidate, safe_money
+from .social_otter import GOALS, POSES, render_sequence
 from .studio import digest, gemini_copy, package_texts, product_image, render_deal_card
 
 
@@ -36,8 +37,9 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
         stale = bool(pack and pack['fingerprint'] != digest(deal))
         with connection(settings.db_path) as conn:
             count = conn.execute('SELECT count(*) FROM studio_attempts WHERE created_at>=?', (now_iso()[:10],)).fetchone()[0]
+            slides = [row['position'] for row in conn.execute('SELECT position FROM studio_slides WHERE deal_id=? ORDER BY position', (deal_id,))]
         return render('studio.html', deal=deal, pack=pack, texts=texts, stale=stale,
-                      message=message, error=error, gemini=gemini_status(settings)["configured"],
+                      message=message, error=error, slides=slides, gemini=gemini_status(settings)["configured"],
                       model=gemini_status(settings)["model"], used=count, csrf_token=csrf_token(settings.admin_token, cookie))
 
     @app.post('/admin/merchant/import')
@@ -81,7 +83,11 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
                 image_source: Annotated[str, Form()] = '', rights: Annotated[str, Form()] = 'no',
                 checked: Annotated[str, Form()] = 'no', use_gemini: Annotated[str, Form()] = 'no',
                 reference_price: Annotated[float, Form()] = 0,
-                reference_kind: Annotated[str, Form()] = 'none', reference_source: Annotated[str, Form()] = ''):
+                reference_kind: Annotated[str, Form()] = 'none', reference_source: Annotated[str, Form()] = '',
+                social_hook: Annotated[str, Form()] = '', social_audience: Annotated[str, Form()] = '',
+                social_benefit: Annotated[str, Form()] = '', social_caveat: Annotated[str, Form()] = '',
+                social_question: Annotated[str, Form()] = '', social_goal: Annotated[str, Form()] = 'follow',
+                otto_pose: Annotated[str, Form()] = 'explain'):
         verify_csrf(request, settings, csrf)
         deal, _ = load(deal_id)
         if deal['status'] != 'draft':
@@ -92,6 +98,9 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
             return page(request, deal_id, error='Titel, Händlername und direkter HTTPS-Link fehlen.')
         if reference_kind not in ('none', 'merchant', 'uvp') or (reference_kind != 'none' and safe_money(reference_price) > 0 and not source):
             return page(request, deal_id, error='Vergleichsart und belegende HTTPS-Quelle prüfen.')
+        social_values = [value.strip() for value in (social_hook, social_audience, social_benefit, social_caveat, social_question)]
+        if any(len(value) > 140 for value in social_values) or social_goal not in GOALS or otto_pose not in POSES:
+            return page(request, deal_id, error='Social-Felder: maximal 140 Zeichen; Ziel und Otto-Pose aus der Auswahl verwenden.')
         timestamp = now_iso()
         with connection(settings.db_path) as conn:
             conn.execute('BEGIN IMMEDIATE')
@@ -109,6 +118,9 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
                  safe_money(reference_price) if reference_kind == 'uvp' else 0, source if reference_kind == 'uvp' else '',
                  safe_money(reference_price) if reference_kind == 'merchant' else 0, source if reference_kind == 'merchant' else '',
                  timestamp if checked == 'yes' else None, timestamp, deal_id))
+            conn.execute('''UPDATE deals SET social_hook=?,social_audience=?,social_benefit=?,social_caveat=?,
+                social_question=?,social_goal=?,otto_pose=? WHERE id=?''',
+                (*social_values, social_goal, otto_pose, deal_id))
         deal, _ = load(deal_id)
         snapshot = digest(deal)
         notes, copy, provider = [], None, 'Textvorlage'
@@ -120,16 +132,19 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
                 notes.append(str(exc))
         texts = package_texts(deal, settings, copy)
         feed, story = None, None
+        slide_images = []
         if rights == 'yes' and deal['image_url'] and deal['image_source']:
             try:
                 photo = product_image(deal['image_url'])
                 feed = render_deal_card(deal, photo)
                 story = render_deal_card(deal, photo, portrait=True)
+                slide_images = render_sequence(deal, photo)
             except ValueError as exc:
                 notes.append(str(exc))
         else:
             notes.append('Für Produktgrafiken Bildquelle und Nutzungsrecht für Website und Social Media bestätigen.')
         with connection(settings.db_path) as conn:
+            conn.execute('BEGIN IMMEDIATE')
             current = dict(conn.execute('SELECT * FROM deals WHERE id=?', (deal_id,)).fetchone())
             if digest(current) != snapshot or current['status'] != 'draft':
                 raise HTTPException(409, 'Daten wurden inzwischen geändert; bitte neu vorbereiten.')
@@ -138,6 +153,9 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
                 texts=excluded.texts,provider=excluded.provider,notes=excluded.notes,feed=excluded.feed,
                 story=excluded.story,created_at=excluded.created_at,approved=0''',
                 (deal_id, snapshot, json.dumps(texts, ensure_ascii=False), provider, ' '.join(notes), feed, story, timestamp))
+            conn.execute('DELETE FROM studio_slides WHERE deal_id=?', (deal_id,))
+            conn.executemany('INSERT INTO studio_slides(deal_id,position,image) VALUES(?,?,?)',
+                             [(deal_id, i+1, image) for i, image in enumerate(slide_images)])
         return page(request, deal_id, message='Deal- und Social-Entwürfe vorbereitet. Texte prüfen und freigeben.')
 
     @app.post('/admin/studio/{deal_id}/approve')
@@ -154,8 +172,8 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
         x_weight = len(re.sub(r'https?://\S+', 'x' * 23, x))
         if x_weight > 280:
             raise HTTPException(422, 'X-Text zu lang: maximal 280 Zeichen inklusive verkürzter Links.')
-        if any(len(v) > 5000 or not v.strip() for v in texts.values()):
-            raise HTTPException(422, 'Texte müssen ausgefüllt und maximal 5000 Zeichen lang sein.')
+        if any(len(v) > {'summary': 2000, 'x': 5000, 'instagram': 2200, 'tiktok': 2200, 'script': 5000}[key] or not v.strip() for key, v in texts.items()):
+            raise HTTPException(422, 'Texte ausfüllen: Kurztext maximal 2000, Instagram/TikTok 2200, Skript 5000 Zeichen.')
         with connection(settings.db_path) as conn:
             conn.execute('BEGIN IMMEDIATE')
             current = conn.execute('SELECT * FROM deals WHERE id=?', (deal_id,)).fetchone()
@@ -182,11 +200,20 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
     def card(request: Request, deal_id: int, kind: str):
         session_cookie(request, settings)
         deal, pack = load(deal_id)
-        if kind not in ('feed', 'story') or not pack or not pack.get(kind):
+        if not pack or pack['fingerprint'] != digest(deal):
+            raise HTTPException(409, 'Grafik fehlt oder ist veraltet; neu vorbereiten.')
+        if kind in ('feed', 'story'):
+            data = pack.get(kind)
+        elif kind in ('slide-1', 'slide-2', 'slide-3'):
+            with connection(settings.db_path) as conn:
+                row = conn.execute('SELECT image FROM studio_slides WHERE deal_id=? AND position=?',
+                                   (deal_id, int(kind[-1]))).fetchone()
+            data = row['image'] if row else None
+        else:
+            data = None
+        if not data:
             raise HTTPException(404, 'Grafik fehlt; Produktbild und Rechte prüfen.')
-        if pack['fingerprint'] != digest(deal):
-            raise HTTPException(409, 'Grafik veraltet; neu vorbereiten.')
-        return Response(pack[kind], media_type='image/png', headers={'Cache-Control': 'no-store'})
+        return Response(data, media_type='image/png', headers={'Cache-Control': 'no-store'})
 
     @app.get('/admin/studio/{deal_id}/download')
     def download(request: Request, deal_id: int):
@@ -201,6 +228,10 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
             for kind in ('feed', 'story'):
                 if pack[kind]:
                     archive.writestr(kind+'.png', pack[kind])
+            with connection(settings.db_path) as conn:
+                for slide in conn.execute('SELECT position,image FROM studio_slides WHERE deal_id=? ORDER BY position', (deal_id,)):
+                    archive.writestr(f"tiktok-{slide['position']:02}.png", slide['image'])
+            archive.writestr('POSTING.txt', 'Drei PNGs in Reihenfolge als Foto-Beitrag hochladen oder in einer Video-App mit dem Sprechertext kombinieren. Kein fertiges MP4. Zuerst Deal veröffentlichen und Preis erneut prüfen. Profilbesuche, Follower und Websitezugriffe beobachten, nicht nur Views. Otto ist eine Markenfigur, kein Produkttester.')
             archive.writestr('STATUS.txt', f"Dealstatus: {deal['status']}\nTexte freigegeben: {bool(pack['approved'])}\nVor dem Posten Preis und Veröffentlichung prüfen.\n{pack['notes']}")
         return Response(output.getvalue(), media_type='application/zip', headers={
             'Content-Disposition': f'attachment; filename="nettodeals-{deal_id}-social.zip"', 'Cache-Control': 'no-store'})

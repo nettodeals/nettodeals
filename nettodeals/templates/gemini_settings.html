@@ -5,7 +5,7 @@
 <body class="admin-body"><header class="admin-header"><a class="brand" href="/">NettoDeals <small>CH</small></a><a href="/admin#system">← Kontrollzentrum</a></header>
 <main class="admin-main studio-main">
 <span class="section-kicker">KI-Einstellungen</span><h1>Gemini einrichten</h1>
-<p>Hier kannst du deinen API-Schlüssel hinterlegen. Eine Eingabe in Orbit oder ein Neustart ist dafür nicht nötig.</p><p>Aktuell erreichte Instanz: <code>{{ instance }}</code></p>
+<p>Hier kannst du deinen vollständigen Google-API-Schlüssel hinterlegen. Auch längere Auth-Schlüssel mit Punkten (z. B. AQ.… ) werden akzeptiert. Eine Eingabe in Orbit oder ein Neustart ist dafür nicht nötig.</p><p>Aktuell erreichte Instanz: <code>{{ instance }}</code></p>
 {% if message %}<p class="notice success" role="status">{{ message }}</p>{% endif %}
 {% if error %}<p class="notice error" role="alert">{{ error }}</p>{% endif %}
 {% if gemini.error %}<p class="notice error" role="alert">{{ gemini.error }}</p>{% endif %}
@@ -15,7 +15,7 @@
 Für den kostenlosen Versuch ein Projekt im Free Tier verwenden. Die App kann den Abrechnungstarif nicht erkennen oder Kosten bei einem kostenpflichtigen Projekt verhindern.</p>
 <form action="/admin/settings/gemini/save" method="post" class="deal-form" autocomplete="off">
 <input type="hidden" name="csrf" value="{{ csrf_token }}">
-<label class="wide">Gemini-API-Schlüssel<input type="password" name="api_key" maxlength="256" autocomplete="new-password" spellcheck="false" autocapitalize="none" placeholder="Neuen Schlüssel einfügen; leer lassen = vorhandenen behalten"></label>
+<label class="wide">Gemini-API-Schlüssel<input type="password" name="api_key" maxlength="4096" autocomplete="new-password" spellcheck="false" autocapitalize="none" placeholder="Neuen Schlüssel einfügen; leer lassen = vorhandenen behalten"></label>
 <label class="wide">Modell-ID<input name="model" value="{{ gemini.model }}" maxlength="80" required spellcheck="false" autocapitalize="none"><small>Zum Beispiel gemini-3.1-flash-lite. Modellverfügbarkeit und kostenloses Kontingent in deinem Google-Projekt prüfen.</small></label>
 <label class="check-row wide"><input type="checkbox" name="enabled" value="yes" {% if gemini.configured %}checked{% endif %}>Gemini aktivieren</label>
 <p class="wide">Der Schlüssel wird verschlüsselt in der App-Datenbank gespeichert und nie im Formular zurückgegeben. Der vorhandene Admin-Token schützt die Verschlüsselung. Nach dessen Änderung den Schlüssel erneut speichern.</p>

@@ -61,13 +61,29 @@ def status(settings):
                     error=str(exc), updated_at=row["updated_at"] if row else "")
 
 
+def normalize_api_key(value):
+    """Treat credentials as opaque header values, not a frozen Google key format."""
+    value = value.strip()
+    # Remove one pair of enclosing copy/paste quotes, never internal characters.
+    pairs = {'"': '"', "'": "'", '“': '”', '‘': '’'}
+    if len(value) > 1 and value[0] in pairs and value[-1] == pairs[value[0]]:
+        value = value[1:-1].strip()
+    if not value:
+        return ""
+    if len(value) > 4096 or len(value) < 20:
+        raise ValueError("API-Schlüssel muss vollständig sein (20 bis 4096 Zeichen).")
+    if any(ord(c) < 33 or ord(c) > 126 or c in '\"\'' for c in value):
+        raise ValueError("API-Schlüssel enthält Leerzeichen, Zeilenumbrüche oder ungültige Zeichen. Bitte vollständig neu kopieren.")
+    if value.startswith(("{", "[", "http:", "https:")) or value.startswith(("GEMINI_API_KEY=", "Bearer ")):
+        raise ValueError("Bitte nur den Schlüsselwert einfügen, keine Datei, URL oder Variablenzuweisung.")
+    return value
+
+
 def save(settings, api_key, model, enabled):
-    api_key = api_key.strip()
+    api_key = normalize_api_key(api_key)
     model = model.strip()
     if not re.fullmatch(r"gemini-[a-zA-Z0-9.-]{1,74}", model):
         raise ValueError("Bitte eine gültige Gemini-Modell-ID eingeben, ohne models/ oder URL.")
-    if api_key and not re.fullmatch(r"[a-zA-Z0-9_-]{20,256}", api_key):
-        raise ValueError("API-Schlüssel-Format ungültig. Nur den Schlüssel ohne Anführungszeichen einfügen.")
     if not api_key:
         try:
             old = _stored(settings)

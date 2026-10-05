@@ -193,7 +193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     docs_url = "/docs" if settings.enable_api_docs else None
     app = FastAPI(
         title="NettoDeals",
-        version="3.5.1",
+        version="3.6.0",
         docs_url=docs_url,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.enable_api_docs else None,
@@ -317,6 +317,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             robots="noindex, follow" if filtered else "index, follow",
             site_url=settings.site_url,
         )
+
+    @app.get("/d/{deal_id}")
+    def short_deal_link(deal_id: int):
+        with connection(settings.db_path) as conn:
+            row = conn.execute("SELECT title,status FROM deals WHERE id=?", (deal_id,)).fetchone()
+        if not row or row["status"] not in ("published", "expired"):
+            raise HTTPException(404, "Deal nicht veröffentlicht")
+        return RedirectResponse(deal_path(deal_id, row["title"]), status_code=302)
 
     @app.get("/deal/{deal_id}/{slug}", response_class=HTMLResponse)
     def deal_detail(deal_id: int, slug: str):
@@ -470,7 +478,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).fetchone()
         return {
             "app": "NettoDeals",
-            "version": "3.5.1",
+            "version": "3.6.0",
             "sources": sync_service.configured_sources(),
             "gemini_configured": gemini_status(settings)["configured"],
             "gemini_model": gemini_status(settings)["model"],

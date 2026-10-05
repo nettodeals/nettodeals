@@ -1,6 +1,12 @@
-# NettoDeals.ch 3.5.1 🇨🇭
+# NettoDeals.ch 3.6.0 🇨🇭
 
-Neu in 3.5.1: Gemini direkt unter **Admin → Gemini** einrichten, ohne neue Orbit-ENV.
+Neu in 3.6.0: robuste Gemini-Schlüsseleingabe ohne Orbit-ENV, Social-Entwürfe mit
+Einstieg/Nutzen/Einschränkung/CTA und Otto dem Otter in sechs Posen. Drei lokale
+Hochformat-Karten pro Deal ergänzen Feed-/Story-Bild und Sprechskript.
+**Aktuelle Anleitung: [UPDATE-3.6.0.md](UPDATE-3.6.0.md)**.
+**Maskottchen: [OTTO-BRAND-GUIDE.md](OTTO-BRAND-GUIDE.md)**.
+
+Seit 3.5.1: Gemini direkt unter **Admin → Gemini** einrichten, ohne neue Orbit-ENV.
 Der Schlüssel wird verschlüsselt in der bestehenden Datenbank gespeichert; Verbindungstest,
 Modellwahl, Deaktivierung und Entfernen sind integriert. Bestehende ENV-Konfiguration
 bleibt als Rückfall erhalten, bis im Admin eine eigene Einstellung gespeichert wird.
