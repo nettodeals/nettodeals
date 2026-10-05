@@ -12,14 +12,14 @@ from .ai_editor import FIELDS, PROMPT, validate_payload
 from .db import connection, now_iso
 from .gemini_settings import effective_settings
 from .merchant import fetch_public
-from .seo import deal_path
 from .social_cards import _font, _wrap
 
 
 def digest(deal):
     fields = ('title', 'description', 'shop_name', 'affiliate_link', 'effective_price',
               'manufacturer_uvp', 'uvp_source_url', 'comparison_price', 'comparison_source',
-              'image_url', 'image_source', 'image_rights_confirmed', 'price_checked_at', 'link_type')
+              'image_url', 'image_source', 'image_rights_confirmed', 'price_checked_at', 'link_type', 'social_hook', 'social_audience', 'social_benefit',
+              'social_caveat', 'social_question', 'social_goal', 'otto_pose')
     return hashlib.sha256(json.dumps({k: deal.get(k) for k in fields}, sort_keys=True).encode()).hexdigest()
 
 
@@ -64,8 +64,8 @@ def gemini_copy(settings, deal):
         response = requests.post(
             f'https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent',
             headers={'x-goog-api-key': settings.gemini_api_key},
-            json={'systemInstruction': {'parts': [{'text': PROMPT}]},
-                  'contents': [{'role': 'user', 'parts': [{'text': json.dumps({'produkt': deal['title'], 'quellenmaterial': deal.get('description', '')[:3000]}, ensure_ascii=False)}]}],
+            json={'systemInstruction': {'parts': [{'text': PROMPT + '\nSocial-Texte beginnen mit dem konkreten Nutzen oder einer ehrlichen Frage. Keine erfundenen Tests, Dringlichkeit oder garantierte Ersparnis. Otto ist eine Markenfigur, kein Produkttester. Schreibe verständlich statt Modellnummern zu wiederholen.'}]},
+                  'contents': [{'role': 'user', 'parts': [{'text': json.dumps({'produkt': deal['title'], 'quellenmaterial': deal.get('description', '')[:3000], 'einsatzzweck': deal.get('social_audience', ''), 'belegter_vorteil': deal.get('social_benefit', ''), 'einschraenkung': deal.get('social_caveat', '')}, ensure_ascii=False)}]}],
                   'generationConfig': {'responseMimeType': 'application/json', 'responseSchema': schema,
                                        'maxOutputTokens': 1800, 'temperature': 0.2}},
             timeout=(5, 35), allow_redirects=False)
@@ -81,24 +81,8 @@ def gemini_copy(settings, deal):
 
 
 def package_texts(deal, settings, copy=None):
-    price = f"CHF {deal['effective_price']:.2f}"
-    ref, label = comparison(deal)
-    saving = f"CHF {ref-deal['effective_price']:.2f} weniger als {label} CHF {ref:.2f} (rund {round((ref-deal['effective_price'])/ref*100)} %)." if ref else ''
-    title = deal['title']
-    url = settings.site_url + deal_path(deal['id'], title)
-    date = str(deal.get('price_checked_at') or now_iso())[:10]
-    disclosure = 'Affiliate-Link: Beim Kauf können wir eine Provision erhalten.' if deal['link_type'] == 'affiliate' else 'Redaktioneller Link ohne Affiliate-Provision.'
-    footer = f'Stand: {date}. Preis und Verfügbarkeit können sich ändern. {disclosure}'
-    lead = copy or {k: title for k in FIELDS}
-    # X deliberately uses bounded plain text plus a URL counted as 23 characters by X.
-    x = f"{title[:65]}\n{price} bei {deal['shop_name'][:30]}.\n"
-    if ref:
-        x += f"CHF {ref-deal['effective_price']:.2f} unter {label}.\n"
-    x += ('Werbung · ' if deal['link_type'] == 'affiliate' else '') + 'Preisänderungen vorbehalten.\n' + url
-    return {'summary': lead['summary'] + '\nKein eigener Produkttest.', 'x': x,
-            'instagram': f"{lead['instagram']}\n\n{price} · Gefunden bei {deal['shop_name']}\n{saving}\n\nDetails: {url}\n\n{footer}\n#NettoDeals #DealsSchweiz",
-            'tiktok': f"{lead['tiktok']}\n\n{price} bei {deal['shop_name']}. {saving}\nDetails auf nettodeals.ch, Suche nach {title}.\n\n{footer}\n#NettoDeals #DealsSchweiz",
-            'script': f"{title} für {price} bei {deal['shop_name']}. {saving} Details auf nettodeals.ch. Aktuellen Preis vor dem Kauf prüfen."}
+    from .social_otter import build_texts
+    return build_texts(deal, settings, copy)
 
 
 def product_image(url):
@@ -160,6 +144,8 @@ def render_deal_card(deal, photo, portrait=False):
     draw.text((65, height-145-footer_shift), 'nettodeals.ch', font=_font(38), fill='#142347')
     draw.text((65, height-88-footer_shift), 'Stand: '+str(deal.get('price_checked_at') or now_iso())[:10], font=_font(23), fill='#526078')
     draw.text((65, height-52-footer_shift), 'Preis und Verfügbarkeit können sich ändern.', font=_font(23), fill='#526078')
+    from .social_otter import paste_otto
+    paste_otto(image, deal.get("otto_pose", "explain"), (820, top - 5, 160, 170))
     output = BytesIO()
     image.save(output, format='PNG')
     return output.getvalue()

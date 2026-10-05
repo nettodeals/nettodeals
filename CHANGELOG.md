@@ -1,3 +1,14 @@
+# NettoDeals 3.6.0 – Otto und Social-Studio
+
+- Gemini-Schlüssel als undurchsichtige Zugangsdaten behandeln: Punkte, längere Auth-Schlüssel und ein Paar umschliessender Anführungszeichen werden unterstützt. Keine Ausgabe von Geheimnissen.
+- Eingabe und verschlüsselte Speicherung im Adminbereich ohne zusätzliche Orbit-Umgebungsvariablen; bestehender Verbindungstest bleibt erhalten.
+- Redaktionelle Felder für Hook, Zielgruppe, belegten Nutzen, Einschränkung und Diskussionsfrage; Ziele Folgen, Website, Diskussion oder Speichern.
+- Sechs originale Otto-PNGs mit Transparenz; Integration in Homepage und lokal gerenderte Social-Bilder.
+- Drei 1080×1920-Karten, Captions und Sprechskript im Social-ZIP. Manuelle Freigabe und Veröffentlichung bleiben erhalten.
+- Öffentliche Kurzlinks /d/ID nur für veröffentlichte oder vergangene Deals.
+- Alte Social-Pakete nach Update neu erzeugen; Deal-Veröffentlichungen bleiben erhalten.
+- Google Analytics mit Einwilligung aus 3.5.1 vollständig enthalten.
+
 # NettoDeals 3.5.1 – Gemini im Admin und Analytics mit Einwilligung
 
 - Gemini-Schlüssel und Modell direkt im authentifizierten Adminbereich speichern.

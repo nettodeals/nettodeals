@@ -572,3 +572,11 @@ details.admin-panel > summary { cursor: pointer; font-weight: 800; }
 .admin-tabs a[aria-current],.admin-tabs a:hover{background:linear-gradient(110deg,#e1efff,#eee3ff);border-color:#8e85ce}
 [data-admin-panel][hidden]{display:none!important}.studio-main{max-width:1100px}.studio-main h1{overflow-wrap:anywhere;font-size:clamp(1.6rem,4vw,2.5rem)}
 .studio-main textarea{width:100%;box-sizing:border-box}.studio-images{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}.studio-images figure{margin:0}.studio-images img{max-width:100%;height:auto;border-radius:20px}.admin-main{min-width:0}.admin-header{gap:1rem;flex-wrap:wrap}.review-links img{width:240px;max-width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;display:block}.review-links ul{display:flex;flex-wrap:wrap;gap:1.5rem;list-style:none;padding:0}.review-links li{max-width:260px}
+
+/* Otto: reusable original brand mascot, no additional third-party requests. */
+.otto-intro { display:flex; align-items:center; gap:12px; max-width:620px; margin:20px auto; text-align:left; }
+.otto-intro img { width:112px; height:112px; object-fit:contain; flex-shrink:0; }
+.otto-intro p { font-size:.95rem; line-height:1.5; color:#48546d; }
+.otto-gallery { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; }
+.otto-gallery img { width:100%; height:auto; }
+@media(max-width:600px) { .otto-gallery { grid-template-columns:repeat(3,minmax(0,1fr)); } .otto-intro img { width:80px; height:80px; } }
