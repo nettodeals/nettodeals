@@ -642,3 +642,22 @@ body:not(.admin-body) {
   .section-heading { align-items:flex-start; flex-direction:column; gap:6px; }
 }
 @media (prefers-reduced-motion:reduce) { .chip,.deal-cta,.admin-tabs a { transition:none !important; } }
+
+
+/* Acer seasonal campaign landing page */
+.acer-campaign { max-width: 1180px; margin: 0 auto; padding: 42px 24px 80px; }
+.acer-hero { position: relative; overflow: hidden; padding: clamp(28px,6vw,64px); border: 1px solid rgba(255,255,255,.75); border-radius: 30px; background: linear-gradient(125deg,#101a38 0%,#263b70 58%,#514b91 100%); color: #fff; box-shadow: 0 24px 70px rgba(24,34,74,.18); }
+.acer-hero:after { content:""; position:absolute; width:340px; height:340px; right:-90px; top:-120px; border-radius:50%; background:radial-gradient(circle,rgba(155,178,255,.36),transparent 68%); pointer-events:none; }
+.acer-hero .section-kicker { color:#c9d4ff; }
+.acer-hero h1 { max-width:780px; margin:16px 0; font-size:clamp(2.5rem,7vw,5.4rem); line-height:.98; letter-spacing:-.055em; }
+.acer-hero h1 em { color:#c9d4ff; font-style:normal; }
+.acer-hero p { max-width:650px; color:#e0e7ff; font-size:1.08rem; line-height:1.65; }
+.acer-trust { display:flex; flex-wrap:wrap; gap:10px 20px; margin-top:28px; color:#e0e7ff; font-size:.9rem; }
+.acer-trust span:before { content:"✓"; margin-right:8px; color:#b8f2d3; }
+.acer-disclosure { margin:18px 2px 30px; color:#66718b; font-size:.85rem; line-height:1.55; }
+.acer-products-heading { display:flex; flex-wrap:wrap; align-items:end; justify-content:space-between; gap:12px; margin:32px 0 20px; }
+.acer-products-heading h2 { margin:6px 0 0; font-size:clamp(1.6rem,4vw,2.5rem); }
+.acer-empty { padding:36px; border:1px dashed #cbd2e6; border-radius:22px; background:rgba(255,255,255,.72); }
+.acer-empty p { color:#66718b; }
+.header-actions { display:flex; align-items:center; gap:14px; }
+@media(max-width:640px) { .header-actions { gap:8px; } .header-actions a { font-size:.78rem; } .acer-campaign { padding:24px 16px 56px; } .acer-hero { border-radius:22px; } }
