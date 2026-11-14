@@ -87,7 +87,7 @@ def build_texts(deal, settings, copy=None):
     tiktok = (f"{a['hook']}\n{title}\n{tiktok_copy}\n{body}\n\n"
               f"{price} bei {deal['shop_name']}. {saving}\n"
               f"{cta(deal)}\nAlle Details: nettodeals.ch/d/{deal['id']}\n{USP}\n"
-              f"{footer}\n#NettoDeals #DealsSchweiz")
+              f"{footer}\n{hashtags}")
     # Three frames, no opening logo sequence. Voice text contains only confirmed facts.
     script = (f"0–3 s | {a['hook']}\n"
               f"3–10 s | {title}. {audience} {benefit}\n"
