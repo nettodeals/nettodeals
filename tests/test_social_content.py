@@ -56,3 +56,24 @@ def test_invalid_ai_social_fields_fall_back_to_editorial_copy():
     assert "Kompakter Monitor" in texts["instagram"]
     assert "Kompakter Monitor" in texts["tiktok"]
     assert "Redaktioneller Link ohne Affiliate-Provision." in texts["instagram"]
+
+
+def test_acer_social_drafts_include_seasonal_campaign_tags():
+    deal = {
+        "id": 18,
+        "title": "Acer Swift Notebook",
+        "shop_name": "Acer Schweiz",
+        "effective_price": 899,
+        "link_type": "affiliate",
+        "price_checked_at": "2026-11-14",
+        "comparison_price": 0,
+        "comparison_source": "",
+        "manufacturer_uvp": 0,
+        "uvp_source_url": "",
+        "social_goal": "visit",
+    }
+    texts = build_texts(deal, SimpleNamespace(site_url="https://nettodeals.ch"))
+    assert "#Acer" in texts["instagram"]
+    assert "#BlackFridayCH" in texts["instagram"]
+    assert "#CyberMondayCH" in texts["tiktok"]
+    assert "https://nettodeals.ch/d/18" in texts["x"]
