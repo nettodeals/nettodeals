@@ -661,3 +661,22 @@ body:not(.admin-body) {
 .acer-empty p { color:#66718b; }
 .header-actions { display:flex; align-items:center; gap:14px; }
 @media(max-width:640px) { .header-actions { gap:8px; } .header-actions a { font-size:.78rem; } .acer-campaign { padding:24px 16px 56px; } .acer-hero { border-radius:22px; } }
+
+
+/* Acer official promotion cards */
+.acer-promotions { margin: 42px 0 56px; }
+.acer-promo-feature { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:24px; padding:clamp(22px,4vw,38px); border-radius:24px; background:linear-gradient(115deg,#fff5dc,#fff 75%); border:1px solid #f2d9a4; box-shadow:0 14px 42px rgba(90,65,20,.07); }
+.acer-promo-feature h3 { margin:12px 0 8px; font-size:clamp(1.5rem,4vw,2.25rem); letter-spacing:-.035em; }
+.acer-promo-feature p { max-width:620px; color:#5f6574; line-height:1.55; }
+.acer-promo-label { display:inline-flex; color:#77531b; font-size:.78rem; font-weight:750; letter-spacing:.07em; text-transform:uppercase; }
+.acer-code { display:inline-block; padding:8px 18px; border:2px dashed #bd8731; border-radius:10px; color:#714811; font-size:1.35rem; letter-spacing:.16em; }
+.acer-promo-grid,.acer-category-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr)); gap:16px; margin-top:18px; }
+.acer-promo-card { padding:24px; border:1px solid var(--line,#e2e6f0); border-radius:20px; background:rgba(255,255,255,.82); }
+.acer-promo-card h3 { margin:12px 0 4px; font-size:1.35rem; }
+.acer-promo-discount { margin:4px 0; color:#a64b27; font-size:1.45rem; font-weight:800; }
+.acer-promo-card p:not(.acer-promo-discount) { color:#687187; line-height:1.5; }
+.acer-promo-card a,.acer-category-grid a { color:#354d91; font-weight:700; text-decoration:none; }
+.acer-category-title { margin:32px 0 0; font-size:1.2rem; }
+.acer-category-grid a { display:flex; flex-direction:column; gap:8px; padding:20px; border:1px solid var(--line,#e2e6f0); border-radius:16px; background:#fff; }
+.acer-category-grid a strong { color:#1d2945; font-size:1.1rem; }
+.acer-category-grid a span { color:#687187; font-size:.9rem; font-weight:500; }
