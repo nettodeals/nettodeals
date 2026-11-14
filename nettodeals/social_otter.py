@@ -42,6 +42,14 @@ def cta(deal):
     }.get(goal, "Folge NettoDeals für Schweizer Deals mit Einordnung.")
 
 
+def _clean_copy(copy, key, limit):
+    """Return bounded plain text from an optional AI draft."""
+    value = copy.get(key, "") if isinstance(copy, dict) else ""
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:limit]
+
+
 def build_texts(deal, settings, copy=None):
     from .studio import comparison
     a = angle(deal)
@@ -57,17 +65,24 @@ def build_texts(deal, settings, copy=None):
     caveat = f"Darauf achten: {a['caveat']}" if a["caveat"] else "Vor dem Kauf Variante, Lieferumfang und Versandkosten prüfen."
     audience = f"Für: {a['audience']}." if a["audience"] else ""
     body = "\n".join(x for x in (audience, benefit, caveat) if x)
-    lead = copy or {}
-    summary = lead.get("summary") or "\n".join(x for x in (title, audience, benefit, caveat) if x)
+    summary_copy = _clean_copy(copy, "summary", 1200)
+    instagram_copy = _clean_copy(copy, "instagram", 300)
+    tiktok_copy = _clean_copy(copy, "tiktok", 200)
+    summary = summary_copy or "\n".join(x for x in (title, audience, benefit, caveat) if x)
     footer = f"Stand: {date}. Preis/Verfügbarkeit können sich ändern. {disclosure}"
-    # Use one primary CTA per channel; no made-up scarcity or review experience.
-    x = (f"{a['hook'][:46]}\n{title[:40]}\n{price} bei {deal['shop_name'][:22]}.\n"
-         f"{'Werbung · ' if deal['link_type'] == 'affiliate' else ''}Preisänderungen möglich.\n"
-         f"{('Folge für Schweizer Deals.' if deal.get('social_goal','follow') == 'follow' else 'Angebot und Details:')}\n{url}")
-    instagram = (f"{a['hook']}\n\n{title}\n{lead.get('instagram', '')[:300]}\n{body}\n\n"
+    # X posts stay within 280 characters and retain the canonical deal URL.
+    x_lines = [a["hook"][:46], title[:72], f"{price} bei {deal['shop_name'][:32]}.",
+               "Werbung · Affiliate-Link." if deal["link_type"] == "affiliate" else "Redaktioneller Link.",
+               "Preis und Verfügbarkeit können sich ändern."]
+    x_prefix = "\n".join(x_lines)
+    x_suffix = "\n" + url
+    if len(x_prefix + x_suffix) > 280:
+        x_prefix = x_prefix[:max(1, 279 - len(x_suffix))].rstrip() + "…"
+    x = x_prefix + x_suffix
+    instagram = (f"{a['hook']}\n\n{title}\n{instagram_copy}\n{body}\n\n"
                  f"{price} · Gefunden bei {deal['shop_name']}\n{saving}\n\n"
                  f"{cta(deal)}\nDetails: {url}\n{USP}\n\n{footer}\n#NettoDeals #DealsSchweiz")
-    tiktok = (f"{a['hook']}\n{title}\n{lead.get('tiktok', '')[:200]}\n{body}\n\n"
+    tiktok = (f"{a['hook']}\n{title}\n{tiktok_copy}\n{body}\n\n"
               f"{price} bei {deal['shop_name']}. {saving}\n"
               f"{cta(deal)}\nAlle Details: nettodeals.ch/d/{deal['id']}\n{USP}\n"
               f"{footer}\n#NettoDeals #DealsSchweiz")
