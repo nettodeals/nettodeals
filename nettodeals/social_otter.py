@@ -70,6 +70,8 @@ def build_texts(deal, settings, copy=None):
     tiktok_copy = _clean_copy(copy, "tiktok", 200)
     summary = summary_copy or "\n".join(x for x in (title, audience, benefit, caveat) if x)
     footer = f"Stand: {date}. Preis/Verfügbarkeit können sich ändern. {disclosure}"
+    is_acer = "acer" in (str(deal.get("shop_name", "")) + " " + title).casefold()
+    hashtags = "#NettoDeals #DealsSchweiz" + (" #Acer #BlackFridayCH #CyberMondayCH" if is_acer else "")
     # X posts stay within 280 characters and retain the canonical deal URL.
     x_lines = [a["hook"][:46], title[:72], f"{price} bei {deal['shop_name'][:32]}.",
                "Werbung · Affiliate-Link." if deal["link_type"] == "affiliate" else "Redaktioneller Link.",
@@ -81,7 +83,7 @@ def build_texts(deal, settings, copy=None):
     x = x_prefix + x_suffix
     instagram = (f"{a['hook']}\n\n{title}\n{instagram_copy}\n{body}\n\n"
                  f"{price} · Gefunden bei {deal['shop_name']}\n{saving}\n\n"
-                 f"{cta(deal)}\nDetails: {url}\n{USP}\n\n{footer}\n#NettoDeals #DealsSchweiz")
+                 f"{cta(deal)}\nDetails: {url}\n{USP}\n\n{footer}\n{hashtags}")
     tiktok = (f"{a['hook']}\n{title}\n{tiktok_copy}\n{body}\n\n"
               f"{price} bei {deal['shop_name']}. {saving}\n"
               f"{cta(deal)}\nAlle Details: nettodeals.ch/d/{deal['id']}\n{USP}\n"
