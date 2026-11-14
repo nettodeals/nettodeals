@@ -48,3 +48,34 @@ Bei Acer-Produkten werden automatisch die Kampagnen-Hashtags `#Acer #BlackFriday
 - Cyber Monday: 30. November 2026
 
 Die Datumsangaben sind redaktionelle Kampagnenhinweise; konkrete Acer-Aktionen gelten nur gemäss den Bedingungen des jeweiligen Advertisers/Händlers.
+
+
+## Bestätigte Acer-Aktionen CH-DE (Angaben aus der Awin-Nachricht)
+
+| Aktion | Zeitraum (CET) | Ziel |
+|---|---|---|
+| Extra-Rabatt, Code BONUS | 20.11.2026 15:00 – 24.11.2026 09:00 | https://store.acer.com/de-ch |
+| Black Friday, bis zu 50% | 26.11.2026 12:00 – 30.11.2026 08:00 | https://store.acer.com/de-ch/spezialangebote/deals |
+| Cyber Monday, bis zu 50% | 30.11.2026 08:00 – 01.12.2026 09:00 | https://store.acer.com/de-ch/spezialangebote/deals |
+
+Für beide Hauptaktionen gilt laut Aktionsinfo: Rabatt wird automatisch im Warenkorb abgezogen. Die bis zu 50% gelten für ausgewählte Produkte, nicht pauschal für das gesamte Sortiment.
+
+Kategorie-Ziele aus der Aktionsinfo:
+- Laptops: `/de-ch/spezialangebote/deals/laptops`
+- Desktops: `/de-ch/special-offers/deals/desktop-pcs`
+- Monitore: `/de-ch/spezialangebote/deals/desktop-pcs` (URL laut Nachricht; vor Bewerbung prüfen, da sie wie die Desktop-Zielseite aussieht)
+- Gaming: `/de-ch/spezialangebote/deals/gaming`
+- Zubehör: `/de-ch/spezialangebote/deals/zubehor`
+
+## Social Copy zur schnellen manuellen Verwendung
+
+**BONUS – Instagram**
+> 🎁 Extra-Rabatt bei Acer! Mit dem Code BONUS sicherst du dir vom 20. bis 24. November zusätzliche Rabatte auf ausgewählte Black-Friday-Angebote. Der Rabatt wird gemäss Aktionsbedingungen im Warenkorb berücksichtigt. Jetzt Acer-Angebote entdecken. Werbung / Affiliate-Link.
+
+**Black Friday – Instagram**
+> 🖥️ Acer Black Friday für die Schweiz: Bis zu 50% Rabatt auf ausgewählte Produkte! Die Aktion läuft vom 26. November, 12:00 Uhr, bis 30. November, 08:00 Uhr (CET). Der Rabatt wird automatisch im Warenkorb abgezogen. Prüfe die verfügbaren Modelle und Preise direkt im Acer Store. Werbung / Affiliate-Link.
+
+**Cyber Monday – TikTok/Reel**
+> Noch auf der Suche nach einem Laptop, Monitor oder Gaming-Upgrade? Beim Acer Cyber Monday gibt es laut Aktionsinfo bis zu 50% Rabatt auf ausgewählte Produkte. Nur vom 30. November, 08:00 Uhr, bis 1. Dezember, 09:00 Uhr (CET). Rabatt wird automatisch im Warenkorb abgezogen. Details über den Link. Werbung / Affiliate-Link.
+
+Vor Veröffentlichung personalisierten Awin-Trackinglink einsetzen, Affiliate-Hinweis sichtbar halten und Bedingungen/Verfügbarkeit erneut prüfen. Social Copy nicht als Behauptung eines pauschalen Rabatts formulieren.
