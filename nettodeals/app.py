@@ -362,6 +362,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             site_url=settings.site_url,
         )
 
+    @app.get("/acer-black-friday", response_class=HTMLResponse)
+    def acer_black_friday():
+        expire_due_deals(settings.db_path)
+        with connection(settings.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM deals
+                WHERE status = 'published' AND affiliate_link != ''
+                  AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+                  AND (
+                    lower(shop_name) LIKE '%acer%'
+                    OR lower(source_name) LIKE '%acer%'
+                    OR lower(title) LIKE '%acer%'
+                  )
+                ORDER BY
+                  CASE WHEN manufacturer_uvp > effective_price AND effective_price > 0
+                       THEN (manufacturer_uvp - effective_price) / manufacturer_uvp
+                       ELSE 0 END DESC,
+                  click_count DESC, updated_at DESC
+                LIMIT 60
+                """
+            ).fetchall()
+        deals = [_deal_dict(row) for row in rows]
+        return _render(
+            "acer_campaign.html",
+            deals=deals,
+            canonical_url=f"{settings.site_url}/acer-black-friday",
+            robots="index, follow" if deals else "noindex, follow",
+            site_url=settings.site_url,
+        )
+
     @app.get("/vergangene-deals", response_class=HTMLResponse)
     def expired_deals():
         expire_due_deals(settings.db_path)
@@ -384,7 +415,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/sitemap.xml")
     def sitemap():
-        static_paths = ("/", "/steckbriefe", "/vergangene-deals", "/ueber-nettodeals", "/redaktion", "/datenschutz", "/impressum")
+        static_paths = ("/", "/acer-black-friday", "/steckbriefe", "/vergangene-deals", "/ueber-nettodeals", "/redaktion", "/datenschutz", "/impressum")
         urls = [f"  <url><loc>{escape(settings.site_url + path)}</loc></url>" for path in static_paths]
         with connection(settings.db_path) as conn:
             rows = conn.execute(
