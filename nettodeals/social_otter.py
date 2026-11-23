@@ -51,52 +51,40 @@ def _clean_copy(copy, key, limit):
 
 
 def build_texts(deal, settings, copy=None):
+    """Short, visual-first social copy with minimal text and factual claims."""
     from .studio import comparison
     a = angle(deal)
     price = f"CHF {deal['effective_price']:.2f}"
     ref, label = comparison(deal)
-    saving = (f"CHF {ref-deal['effective_price']:.2f} unter {label} CHF {ref:.2f} "
-              f"(rund {round((ref-deal['effective_price'])/ref*100)} %).") if ref else ""
+    saving = f"{round((ref-deal['effective_price'])/ref*100)} % unter Vergleich" if ref else ""
     url = settings.site_url + f"/d/{deal['id']}"
     title = deal["title"]
-    disclosure = "Werbung · Affiliate-Link." if deal["link_type"] == "affiliate" else "Redaktioneller Link ohne Affiliate-Provision."
+    disclosure = "Werbung · Affiliate-Link." if deal["link_type"] == "affiliate" else "Redaktioneller Link."
     date = str(deal.get("price_checked_at") or now_iso())[:10]
-    benefit = f"Das spricht dafür: {a['benefit']}" if a["benefit"] else "Produkteigenschaften mit deinem Bedarf abgleichen."
-    caveat = f"Darauf achten: {a['caveat']}" if a["caveat"] else "Vor dem Kauf Variante, Lieferumfang und Versandkosten prüfen."
-    audience = f"Für: {a['audience']}." if a["audience"] else ""
-    body = "\n".join(x for x in (audience, benefit, caveat) if x)
-    summary_copy = _clean_copy(copy, "summary", 1200)
-    instagram_copy = _clean_copy(copy, "instagram", 300)
-    tiktok_copy = _clean_copy(copy, "tiktok", 200)
-    summary = summary_copy or "\n".join(x for x in (title, audience, benefit, caveat) if x)
-    footer = f"Stand: {date}. Preis/Verfügbarkeit können sich ändern. {disclosure}"
-    is_acer = "acer" in (str(deal.get("shop_name", "")) + " " + title).casefold()
-    hashtags = "#NettoDeals #DealsSchweiz" + (" #Acer #BlackFridayCH #CyberMondayCH" if is_acer else "")
-    # X posts stay within 280 characters and retain the canonical deal URL.
-    x_lines = [a["hook"][:46], title[:72], f"{price} bei {deal['shop_name'][:32]}.",
-               "Werbung · Affiliate-Link." if deal["link_type"] == "affiliate" else "Redaktioneller Link.",
-               "Preis und Verfügbarkeit können sich ändern."]
-    x_prefix = "\n".join(x_lines)
-    x_suffix = "\n" + url
-    if len(x_prefix + x_suffix) > 280:
-        x_prefix = x_prefix[:max(1, 279 - len(x_suffix))].rstrip() + "…"
-    x = x_prefix + x_suffix
-    instagram = (f"{a['hook']}\n\n{title}\n{instagram_copy}\n{body}\n\n"
-                 f"{price} · Gefunden bei {deal['shop_name']}\n{saving}\n\n"
-                 f"{cta(deal)}\nDetails: {url}\n{USP}\n\n{footer}\n{hashtags}")
-    tiktok = (f"{a['hook']}\n{title}\n{tiktok_copy}\n{body}\n\n"
-              f"{price} bei {deal['shop_name']}. {saving}\n"
-              f"{cta(deal)}\nAlle Details: nettodeals.ch/d/{deal['id']}\n{USP}\n"
-              f"{footer}\n{hashtags}")
-    # Three frames, no opening logo sequence. Voice text contains only confirmed facts.
-    script = (f"0–3 s | {a['hook']}\n"
-              f"3–10 s | {title}. {audience} {benefit}\n"
-              f"10–16 s | {caveat}\n"
-              f"16–22 s | {price} bei {deal['shop_name']}. {saving}\n"
-              f"22–26 s | {cta(deal)} Details auf nettodeals.ch, Deal {deal['id']}.\n"
-              "Timing ist ein Vorschlag; an Sprechtempo anpassen. Kein eigener Produkttest.")
+    hashtags = "#NettoDeals #DealsSchweiz" + (" #Acer #BlackFridayCH #CyberMondayCH" if "acer" in (str(deal.get("shop_name", "")) + title).casefold() else "")
+    summary_copy = _clean_copy(copy, "summary", 300)
+    instagram_copy = _clean_copy(copy, "instagram", 180)
+    tiktok_copy = _clean_copy(copy, "tiktok", 120)
+    summary = summary_copy or f"{title} · {price}" + (f" · {saving}" if saving else "")
+    x = f"{title[:100]}\n{price} bei {deal['shop_name'][:30]}." + (f" {saving}." if saving else "") + f" {disclosure}\n{url}"
+    if len(x) > 280:
+        x = x[:max(1, 277-len(url))].rstrip() + "…\n" + url
+    instagram = "\n".join(part for part in (
+        a["hook"][:100], title[:160], instagram_copy, f"{price} · {deal['shop_name']}",
+        saving, f"Details: {url}", disclosure, hashtags) if part)
+    tiktok = "\n".join(part for part in (
+        title[:160], tiktok_copy, f"{price} bei {deal['shop_name']}", saving,
+        f"Details: nettodeals.ch/d/{deal['id']}", disclosure, hashtags) if part)
+    script = (f"Hook: {a['hook'][:90]}\n"
+              f"Produkt: {title[:150]}\n"
+              f"Vorteil: {a['benefit'][:140] or 'Daten und Preis beim Händler prüfen.'}\n"
+              f"Preis: {price} bei {deal['shop_name']}\n"
+              f"CTA: Deal auf NettoDeals ansehen.\n"
+              "Nur belegte Angaben; kein eigener Produkttest.")
+    footer = f"Preisstand: {date}. Preis und Verfügbarkeit können sich ändern."
     return {"summary": summary + "\nKein eigener Produkttest.", "x": x,
-            "instagram": instagram, "tiktok": tiktok, "script": script}
+            "instagram": instagram + "\n" + footer, "tiktok": tiktok + "\n" + footer,
+            "script": script}
 
 
 def paste_otto(image, pose, box):
