@@ -29,7 +29,7 @@ def _clean_copy(copy,key,limit):
 def build_texts(deal, settings, copy=None):
     from .studio import comparison
     a=angle(deal); price=f"CHF {deal['effective_price']:.2f}"; ref,label=comparison(deal)
-    saving=f"{round((ref-deal['effective_price'])/ref)} % unter Vergleichspreis" if ref else ""
+    saving=f"{round((ref-deal['effective_price'])/ref*100)} % unter Vergleichspreis" if ref else ""
     url=settings.site_url+f"/d/{deal['id']}"; title=deal["title"]
     disclosure="Werbung · Affiliate-Link." if deal["link_type"]=="affiliate" else "Redaktioneller Link."
     date_text=str(deal.get("price_checked_at") or now_iso())[:10]
