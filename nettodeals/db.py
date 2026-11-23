@@ -136,6 +136,13 @@ def init_db(db_path: str) -> None:
                 conn.execute(f'ALTER TABLE deals ADD COLUMN "{name}" {definition}')
 
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, brand TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL, subtitle TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '',
+                affiliate_url TEXT NOT NULL, starts_at TEXT NOT NULL DEFAULT '', ends_at TEXT NOT NULL DEFAULT '',
+                active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS gemini_settings (
                 id INTEGER PRIMARY KEY CHECK(id=1), encrypted TEXT NOT NULL, updated_at TEXT NOT NULL
             );
