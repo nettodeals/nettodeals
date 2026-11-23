@@ -81,7 +81,7 @@ def gemini_copy(settings, deal):
 
 
 def package_texts(deal, settings, copy=None):
-    from .social_otter import build_texts
+    from .social_content import build_texts
     return build_texts(deal, settings, copy)
 
 
