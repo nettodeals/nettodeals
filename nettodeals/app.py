@@ -204,7 +204,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sync_service = sync_service
     register_brief_routes(app, settings, _render, _session_cookie, _verify_csrf)
     register_ai_routes(app, settings, _render, _session_cookie, _verify_csrf)
-    register_studio_routes(app, settings, _render, _session_cookie, _verify_csrf)\n    register_campaign_routes(app, settings, _render, _session_cookie, _verify_csrf)
+    register_studio_routes(app, settings, _render, _session_cookie, _verify_csrf)
+    register_campaign_routes(app, settings, _render, _session_cookie, _verify_csrf)
     register_gemini_routes(app, settings, _render, _session_cookie, _verify_csrf)
     if settings.allowed_hosts != ("*",):
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
