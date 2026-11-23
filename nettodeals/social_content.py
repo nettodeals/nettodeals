@@ -79,6 +79,7 @@ def build_texts(deal, settings, copy=None):
             f"{price} bei {deal['shop_name']}",
             saving,
             f"nettodeals.ch/d/{deal['id']}",
+            cta(deal),
             disclosure,
             tags,
         )
