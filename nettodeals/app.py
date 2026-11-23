@@ -59,7 +59,7 @@ from .toppreise import (
     extract_snapshot_html,
     parse_snapshot,
 )
-from .trends import trend_cache_age_seconds
+from .trends import trend_cache_age_seconds\nfrom .campaigns import register_campaign_routes
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
@@ -203,7 +203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sync_service = sync_service
     register_brief_routes(app, settings, _render, _session_cookie, _verify_csrf)
     register_ai_routes(app, settings, _render, _session_cookie, _verify_csrf)
-    register_studio_routes(app, settings, _render, _session_cookie, _verify_csrf)
+    register_studio_routes(app, settings, _render, _session_cookie, _verify_csrf)\n    register_campaign_routes(app, settings, _render, _session_cookie, _verify_csrf)
     register_gemini_routes(app, settings, _render, _session_cookie, _verify_csrf)
     if settings.allowed_hosts != ("*",):
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
@@ -289,7 +289,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 GROUP BY category ORDER BY count DESC, category ASC LIMIT 12
                 """
             ).fetchall()
-            totals = conn.execute(
+            campaigns = conn.execute("SELECT * FROM campaigns WHERE active=1 AND (starts_at='' OR starts_at <= datetime('now')) AND (ends_at='' OR ends_at > datetime('now')) ORDER BY sort_order,id").fetchall()\n            totals = conn.execute(
                 """
                 SELECT COUNT(*) AS deals,
                        COALESCE(SUM(click_count), 0) AS clicks,
@@ -316,14 +316,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             canonical_url=f"{settings.site_url}/",
             robots="noindex, follow" if filtered else "index, follow",
             site_url=settings.site_url,
-            campaigns=[{
-                "title": "Acer Black Friday & Cyber Monday",
-                "subtitle": "Bis zu 50 % Rabatt auf ausgewählte Produkte",
-                "detail": "Zusätzlich 3 % mit Code BONUS bis 24. November · Black Friday ab 26. November",
-                "url": "https://www.awin1.com/cread.php?awinmid=23364&awinaffid=3090059&clickref=bf26_main&ued=https%3A%2F%2Fstore.acer.com%2Fde-ch%2Fspezialangebote%2Fdeals",
-                "brand": "ACER",
-                "active": True,
-            }],
+            campaigns=[dict(row, url=row['affiliate_url']) for row in campaigns],
         )
 
     @app.get("/d/{deal_id}")
@@ -558,7 +551,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "drafts": [dict(row) for row in drafts],
             "published": [dict(row) for row in published],
             "expired": [dict(row) for row in expired],
-            "logs": [dict(row) for row in logs],
+            "logs": [dict(row) for row in logs],\n            "campaigns": [dict(row) for row in campaigns],
             "deal_schedule": schedule,
             "deal_queue": queue,
             "counts": {row["status"]: row["count"] for row in counts},
