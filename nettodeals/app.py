@@ -59,7 +59,8 @@ from .toppreise import (
     extract_snapshot_html,
     parse_snapshot,
 )
-from .trends import trend_cache_age_seconds\nfrom .campaigns import register_campaign_routes
+from .trends import trend_cache_age_seconds
+from .campaigns import register_campaign_routes
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
