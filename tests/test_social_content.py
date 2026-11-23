@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from nettodeals.social_otter import build_texts
+from nettodeals.social_content import build_texts
 
 
 def test_x_copy_is_bounded_and_keeps_deal_url():
