@@ -28,6 +28,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .ai_routes import register_ai_routes
 from .brief_routes import register_brief_routes
 from .briefs import brief_dict, brief_path
+from .campaigns import register_campaign_routes
 from .config import Settings
 from .db import connection, expire_due_deals, init_db, log_import, now_iso, upsert_deal
 from .deal_schedule import configure as configure_deals
@@ -60,7 +61,6 @@ from .toppreise import (
     parse_snapshot,
 )
 from .trends import trend_cache_age_seconds
-from .campaigns import register_campaign_routes
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
@@ -550,6 +550,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             counts = conn.execute(
                 "SELECT status, COUNT(*) AS count FROM deals GROUP BY status"
             ).fetchall()
+            campaigns = conn.execute("SELECT * FROM campaigns ORDER BY sort_order, id").fetchall()
         return {
             "drafts": [dict(row) for row in drafts],
             "published": [dict(row) for row in published],
