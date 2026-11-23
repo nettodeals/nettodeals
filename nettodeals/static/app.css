@@ -680,3 +680,39 @@ body:not(.admin-body) {
 .acer-category-grid a { display:flex; flex-direction:column; gap:8px; padding:20px; border:1px solid var(--line,#e2e6f0); border-radius:16px; background:#fff; }
 .acer-category-grid a strong { color:#1d2945; font-size:1.1rem; }
 .acer-category-grid a span { color:#687187; font-size:.9rem; font-weight:500; }
+
+/* Kampagnen auf der Startseite: klare, reduzierte Aktionsflächen */
+.campaigns-section { margin: 18px 0 42px; }
+.campaign-heading { margin-bottom: 16px; }
+.campaign-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; }
+.campaign-card { display: grid; grid-template-columns: minmax(120px, 0.32fr) 1fr; overflow: hidden; border: 1px solid rgba(69, 85, 132, .13); border-radius: 24px; background: linear-gradient(135deg, #111c36, #243d70 55%, #3b315f); color: #fff; box-shadow: 0 14px 38px rgba(22, 32, 65, .12); }
+.campaign-brand { display: flex; align-items: center; justify-content: center; padding: 24px; font-size: clamp(1.4rem, 5vw, 2.4rem); font-weight: 900; letter-spacing: .08em; background: linear-gradient(135deg, rgba(56, 208, 217, .16), rgba(183, 96, 210, .25)); }
+.campaign-copy { padding: 24px; }
+.campaign-tag { display: inline-block; color: #b6f0f0; text-transform: uppercase; font-size: .68rem; font-weight: 800; letter-spacing: .12em; }
+.campaign-copy h3 { margin: 6px 0 8px; font-size: 1.35rem; line-height: 1.15; }
+.campaign-copy p { margin: 8px 0; color: rgba(255,255,255,.84); }
+.campaign-detail { font-size: .86rem; }
+.campaign-cta { display: inline-flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: #fff; color: #1b2c4e; font-weight: 800; text-decoration: none; }
+.campaign-copy .sponsored-note { margin-top: 12px; font-size: .72rem; color: rgba(255,255,255,.68); }
+@media (max-width: 600px) { .campaign-card { grid-template-columns: 1fr; } .campaign-brand { padding: 14px; } .campaign-copy { padding: 18px; } }
+
+/* Professional Aurora refinement */
+:root { --ink:#172033; --muted:#66738b; --line:rgba(26,43,72,.11); --surface:#fff; --blue:#315fb8; --violet:#6255a8; --cyan:#2b8997; --pink:#b75d89; --shadow:0 12px 40px rgba(17,24,39,.055); --radius:20px; }
+body { background:#f5f7fb; }
+.aurora { opacity:.055; filter:blur(110px); }
+.aurora-one { background:radial-gradient(circle at 35% 30%,#9fbef7,#aaa8dc 52%,#c3e3e8); }
+.aurora-two { opacity:.035; background:radial-gradient(circle,#b7d7e7,#d7c7e9); }
+.hero { padding-top:48px; }
+.hero-copy { line-height:1.7; }
+.deal-card,.admin-panel,.draft-card,.campaign-card { border-radius:20px; box-shadow:0 8px 30px rgba(17,24,39,.04); backdrop-filter:none; }
+.deal-card { background:#fff; border-color:rgba(27,42,73,.08); }
+.deal-card::before { height:2px; opacity:.4; background:linear-gradient(90deg,#3b6bc9,#8b82d1,#a6c7d0); }
+.primary-button,.search button { background:#2e5fb9; box-shadow:0 4px 12px rgba(46,95,185,.12); border-radius:12px; }
+.campaign-card { background:linear-gradient(120deg,#15243d,#25426d); border:1px solid rgba(29,54,89,.1); box-shadow:0 16px 36px rgba(25,48,86,.1); }
+.campaign-brand { background:linear-gradient(140deg,#eaf0fb,#dfe9f4); color:#253754; }
+.admin-panel { background:#fff; border:1px solid rgba(27,42,73,.09); padding:22px; margin:14px 0; }
+.admin-tabs { background:#fff; border:1px solid var(--line); border-radius:14px; }
+.campaign-admin-edit { margin:12px 0; padding:14px; background:#f8fafc; border:1px solid var(--line); border-radius:16px; }
+.campaign-admin-edit summary { cursor:pointer; display:flex; justify-content:space-between; gap:10px; }
+.campaign-admin-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+@media(max-width:600px){.admin-panel{padding:16px}.campaign-admin-actions{width:100%}}

@@ -19,7 +19,7 @@ def digest(deal):
     fields = ('title', 'description', 'shop_name', 'affiliate_link', 'effective_price',
               'manufacturer_uvp', 'uvp_source_url', 'comparison_price', 'comparison_source',
               'image_url', 'image_source', 'image_rights_confirmed', 'price_checked_at', 'link_type', 'social_hook', 'social_audience', 'social_benefit',
-              'social_caveat', 'social_question', 'social_goal', 'otto_pose')
+              'social_caveat', 'social_question', 'social_goal')
     return hashlib.sha256(json.dumps({k: deal.get(k) for k in fields}, sort_keys=True).encode()).hexdigest()
 
 
@@ -81,7 +81,7 @@ def gemini_copy(settings, deal):
 
 
 def package_texts(deal, settings, copy=None):
-    from .social_otter import build_texts
+    from .social_content import build_texts
     return build_texts(deal, settings, copy)
 
 
@@ -144,8 +144,6 @@ def render_deal_card(deal, photo, portrait=False):
     draw.text((65, height-145-footer_shift), 'nettodeals.ch', font=_font(38), fill='#142347')
     draw.text((65, height-88-footer_shift), 'Stand: '+str(deal.get('price_checked_at') or now_iso())[:10], font=_font(23), fill='#526078')
     draw.text((65, height-52-footer_shift), 'Preis und Verfügbarkeit können sich ändern.', font=_font(23), fill='#526078')
-    from .social_otter import paste_otto
-    paste_otto(image, deal.get("otto_pose", "explain"), (820, top - 5, 160, 170))
     output = BytesIO()
     image.save(output, format='PNG')
     return output.getvalue()

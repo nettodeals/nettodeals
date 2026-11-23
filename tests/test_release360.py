@@ -8,7 +8,7 @@ from PIL import Image
 
 from nettodeals.db import connection
 from nettodeals.gemini_settings import effective_settings, normalize_api_key
-from nettodeals.social_otter import ASSETS, GOALS, POSES, build_texts
+from nettodeals.social_content import GOALS, build_texts
 from nettodeals.studio import gemini_copy
 from tests.test_app import login
 from tests.test_deal_workflow import draft
@@ -46,13 +46,6 @@ def test_quote_cleanup_and_unsafe_keys():
     for bad in [key + "\r\nX-Header: bad", key + " abc", key + "\u200b", "a"*4097]:
         with pytest.raises(ValueError):
             normalize_api_key(bad)
-
-
-def test_otto_assets_have_alpha_and_six_poses():
-    for pose in POSES:
-        with Image.open(ASSETS / (pose + ".png")) as image:
-            assert image.size == (512, 512) and image.mode == "RGBA"
-            assert image.getchannel("A").getextrema()[0] == 0
 
 
 def test_social_workflow_slides_review_and_staleness(client, settings, monkeypatch):

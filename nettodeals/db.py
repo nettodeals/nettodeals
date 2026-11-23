@@ -136,6 +136,13 @@ def init_db(db_path: str) -> None:
                 conn.execute(f'ALTER TABLE deals ADD COLUMN "{name}" {definition}')
 
         conn.executescript("""
+            CREATE TABLE IF NOT EXISTS campaigns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, brand TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL, subtitle TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '',
+                affiliate_url TEXT NOT NULL, starts_at TEXT NOT NULL DEFAULT '', ends_at TEXT NOT NULL DEFAULT '',
+                active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS gemini_settings (
                 id INTEGER PRIMARY KEY CHECK(id=1), encrypted TEXT NOT NULL, updated_at TEXT NOT NULL
             );
@@ -172,6 +179,11 @@ def init_db(db_path: str) -> None:
             );
         """)
 
+        conn.execute("""INSERT INTO campaigns (brand,title,subtitle,detail,affiliate_url,starts_at,ends_at,active,sort_order,created_at,updated_at)
+            SELECT 'ACER','Acer Black Friday & Cyber Monday','Bis zu 50 % Rabatt auf ausgewählte Produkte','BONUS 3 % bis 24.11. · Black Friday 26.–30.11. · Cyber Monday bis 01.12.2026',
+            'https://www.awin1.com/cread.php?awinmid=23364&awinaffid=3090059&clickref=bf26_main&ued=https%3A%2F%2Fstore.acer.com%2Fde-ch%2Fspezialangebote%2Fdeals',
+            '2026-11-20T15:00','2026-12-01T09:00',1,10,?,?
+            WHERE NOT EXISTS (SELECT 1 FROM campaigns WHERE title LIKE 'Acer Black Friday%')""",(now_iso(),now_iso()))
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS import_logs (

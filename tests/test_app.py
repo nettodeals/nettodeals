@@ -111,7 +111,7 @@ def test_home_links_official_social_channels_safely(client):
     assert 'href="https://www.instagram.com/nettodeals.ch/"' in response.text
     assert 'href="https://www.tiktok.com/@nettodealsschweiz?lang=de-DE"' in response.text
     assert response.text.count('rel="me noopener noreferrer"') == 3
-    assert response.text.count('target="_blank"') == 3
+    assert response.text.count('target="_blank"') == 4
 
 
 def test_home_paginates_results(client, settings):
