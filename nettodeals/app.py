@@ -290,7 +290,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 GROUP BY category ORDER BY count DESC, category ASC LIMIT 12
                 """
             ).fetchall()
-            campaigns = conn.execute("SELECT * FROM campaigns WHERE active=1 AND (starts_at='' OR datetime(starts_at) <= datetime('now')) AND (ends_at='' OR datetime(ends_at) > datetime('now')) ORDER BY sort_order,id").fetchall()
+            campaigns = conn.execute("SELECT * FROM campaigns WHERE active=1 AND (starts_at='' OR datetime(starts_at) <= datetime('now','+1 hour')) AND (ends_at='' OR datetime(ends_at) > datetime('now','+1 hour')) ORDER BY sort_order,id").fetchall()
             totals = conn.execute(
                 """
                 SELECT COUNT(*) AS deals,
