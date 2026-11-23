@@ -44,7 +44,7 @@ def build_texts(deal, settings, copy=None):
     saving = f"{round((ref - deal['effective_price']) / ref * 100)} % unter Vergleichspreis" if ref else ""
     url = settings.site_url + f"/d/{deal['id']}"
     title = deal["title"]
-    disclosure = "Werbung · Affiliate-Link." if deal["link_type"] == "affiliate" else "Redaktioneller Link."
+    disclosure = "Werbung · Affiliate-Link." if deal["link_type"] == "affiliate" else "Redaktioneller Link ohne Affiliate-Provision."
     date_text = str(deal.get("price_checked_at") or now_iso())[:10]
     tags = "#NettoDeals #DealsSchweiz" + (
         " #Acer #BlackFridayCH #CyberMondayCH"
@@ -90,7 +90,7 @@ def build_texts(deal, settings, copy=None):
         f"Vorteil: {a['benefit'][:110] or 'Fakten beim Händler prüfen.'}\n"
         f"Hinweis: {a['caveat'][:100] or 'Variante und Lieferumfang prüfen.'}\n"
         f"Preis: {price}\n"
-        "CTA: Details auf NettoDeals ansehen."
+        "CTA: Details auf NettoDeals ansehen.\nKein eigener Produkttest."
     )
     footer = f"Stand {date_text} · Preis und Verfügbarkeit können sich ändern."
     return {
