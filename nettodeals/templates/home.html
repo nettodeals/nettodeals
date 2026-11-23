@@ -63,11 +63,20 @@
       </div>
       <div class="campaign-grid">
         {% for campaign in campaigns %}
-        <article class="campaign-card">
-          <div class="campaign-brand">{{ campaign.brand }}</div>
-          <div class="campaign-copy"><span class="campaign-tag">Aktuelle Kampagne</span><h3>{{ campaign.title }}</h3><p>{{ campaign.subtitle }}</p><p class="campaign-detail">{{ campaign.detail }}</p>
-          <a class="campaign-cta" href="{{ campaign.url }}" target="_blank" rel="nofollow sponsored noopener noreferrer">Kampagne entdecken <span aria-hidden="true">↗</span></a>
-          <p class="sponsored-note">Werbung · Affiliate-Link. Bei einem Kauf können wir eine Provision erhalten.</p></div>
+        <article class="campaign-card campaign-card-premium">
+          <div class="campaign-visual" aria-hidden="true">
+            <span class="campaign-orbit campaign-orbit-one"></span><span class="campaign-orbit campaign-orbit-two"></span>
+            <span class="campaign-visual-label">DEAL<br><b>SPOTLIGHT</b></span>
+            <span class="campaign-visual-brand">{{ campaign.brand }}</span>
+          </div>
+          <div class="campaign-copy campaign-copy-premium">
+            <div class="campaign-meta"><span class="campaign-tag">Highlight · Schweiz</span><span class="campaign-brand-pill">{{ campaign.brand }}</span></div>
+            <h3>{{ campaign.title }}</h3>
+            <p class="campaign-lead">{{ campaign.subtitle }}</p>
+            {% if campaign.detail %}<div class="campaign-detail-row"><span class="campaign-detail-dot"></span><p class="campaign-detail">{{ campaign.detail }}</p></div>{% endif %}
+            <a class="campaign-cta campaign-cta-premium" href="{{ campaign.url }}" target="_blank" rel="nofollow sponsored noopener noreferrer">Aktion ansehen <span aria-hidden="true">↗</span></a>
+            <p class="sponsored-note">Werbung · Affiliate-Link. Bei einem Kauf können wir eine Provision erhalten.</p>
+          </div>
         </article>
         {% endfor %}
       </div>
