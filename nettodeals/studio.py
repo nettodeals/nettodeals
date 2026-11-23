@@ -19,7 +19,7 @@ def digest(deal):
     fields = ('title', 'description', 'shop_name', 'affiliate_link', 'effective_price',
               'manufacturer_uvp', 'uvp_source_url', 'comparison_price', 'comparison_source',
               'image_url', 'image_source', 'image_rights_confirmed', 'price_checked_at', 'link_type', 'social_hook', 'social_audience', 'social_benefit',
-              'social_caveat', 'social_question', 'social_goal', 'otto_pose')
+              'social_caveat', 'social_question', 'social_goal')
     return hashlib.sha256(json.dumps({k: deal.get(k) for k in fields}, sort_keys=True).encode()).hexdigest()
 
 
