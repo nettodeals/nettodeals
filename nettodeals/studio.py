@@ -144,8 +144,6 @@ def render_deal_card(deal, photo, portrait=False):
     draw.text((65, height-145-footer_shift), 'nettodeals.ch', font=_font(38), fill='#142347')
     draw.text((65, height-88-footer_shift), 'Stand: '+str(deal.get('price_checked_at') or now_iso())[:10], font=_font(23), fill='#526078')
     draw.text((65, height-52-footer_shift), 'Preis und Verfügbarkeit können sich ändern.', font=_font(23), fill='#526078')
-    from .social_otter import paste_otto
-    paste_otto(image, deal.get("otto_pose", "explain"), (820, top - 5, 160, 170))
     output = BytesIO()
     image.save(output, format='PNG')
     return output.getvalue()
