@@ -17,7 +17,7 @@ from .gemini_settings import status as gemini_status
 from .merchant import fetch_public, parse_product
 from .security import csrf_token, normalize_external_url
 from .services import DealCandidate, safe_money
-from .social_otter import GOALS, POSES, render_sequence
+from .social_content import GOALS, render_sequence
 from .studio import digest, gemini_copy, package_texts, product_image, render_deal_card
 
 
@@ -99,8 +99,8 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
         if reference_kind not in ('none', 'merchant', 'uvp') or (reference_kind != 'none' and safe_money(reference_price) > 0 and not source):
             return page(request, deal_id, error='Vergleichsart und belegende HTTPS-Quelle prüfen.')
         social_values = [value.strip() for value in (social_hook, social_audience, social_benefit, social_caveat, social_question)]
-        if any(len(value) > 140 for value in social_values) or social_goal not in GOALS or otto_pose not in POSES:
-            return page(request, deal_id, error='Social-Felder: maximal 140 Zeichen; Ziel und Otto-Pose aus der Auswahl verwenden.')
+        if any(len(value) > 140 for value in social_values) or social_goal not in GOALS:
+            return page(request, deal_id, error='Social-Felder: maximal 140 Zeichen; Ziel und Social-Ziel aus der Auswahl verwenden.')
         timestamp = now_iso()
         with connection(settings.db_path) as conn:
             conn.execute('BEGIN IMMEDIATE')
@@ -119,8 +119,8 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
                  safe_money(reference_price) if reference_kind == 'merchant' else 0, source if reference_kind == 'merchant' else '',
                  timestamp if checked == 'yes' else None, timestamp, deal_id))
             conn.execute('''UPDATE deals SET social_hook=?,social_audience=?,social_benefit=?,social_caveat=?,
-                social_question=?,social_goal=?,otto_pose=? WHERE id=?''',
-                (*social_values, social_goal, otto_pose, deal_id))
+                social_question=?,social_goal=? WHERE id=?''',
+                (*social_values, social_goal, deal_id))
         deal, _ = load(deal_id)
         snapshot = digest(deal)
         notes, copy, provider = [], None, 'Textvorlage'
