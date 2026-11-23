@@ -86,8 +86,7 @@ def register_studio_routes(app, settings, render, session_cookie, verify_csrf):
                 reference_kind: Annotated[str, Form()] = 'none', reference_source: Annotated[str, Form()] = '',
                 social_hook: Annotated[str, Form()] = '', social_audience: Annotated[str, Form()] = '',
                 social_benefit: Annotated[str, Form()] = '', social_caveat: Annotated[str, Form()] = '',
-                social_question: Annotated[str, Form()] = '', social_goal: Annotated[str, Form()] = 'follow',
-                otto_pose: Annotated[str, Form()] = 'explain'):
+                social_question: Annotated[str, Form()] = '', social_goal: Annotated[str, Form()] = 'follow'):
         verify_csrf(request, settings, csrf)
         deal, _ = load(deal_id)
         if deal['status'] != 'draft':
